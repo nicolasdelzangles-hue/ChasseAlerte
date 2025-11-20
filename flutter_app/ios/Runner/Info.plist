@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+    <!-- Permission localisation -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Nous avons besoin de votre position pour afficher les battues autour de vous.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Nous avons besoin d’accéder à vos photos pour les envoyer dans le chat.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Nous avons besoin de la caméra pour prendre des photos/vidéos.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+<string>Votre position est utilisée pour afficher la météo locale.</string>
+
+    <!-- Autres clés existantes -->
+  </dict>
+</plist>

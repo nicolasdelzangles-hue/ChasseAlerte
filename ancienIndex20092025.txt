@@ -1,0 +1,588 @@
+// index.js — ChasseAlerte (API REST + Socket.IO)
+
+const express = require('express');
+const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const bodyParser = require('body-parser');
+const mysql = require('mysql2/promise');
+const os = require('os');
+const http = require('http');
+const { Server } = require('socket.io');
+
+// ---------- Normalisation téléphone (format E.164) ----------
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
+function normPhone(phone, defaultCountry = 'FR') {
+  try {
+    const p = parsePhoneNumberFromString(String(phone || ''), defaultCountry);
+    if (!p || !p.isValid()) return null;
+    return p.number; // ex: +33612345678
+  } catch {
+    return null;
+  }
+}
+
+// ---------- Helpers ----------
+function safeEmailRaw(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const SECRET_KEY = 'chassealerte_secret';
+
+// ---------- MySQL (pool) ----------
+const db = mysql.createPool({
+  host: 'localhost',
+  user: 'root',
+  password: '',
+  database: 'chassealerte',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
+
+// ---------- Middlewares ----------
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+app.use(bodyParser.json());
+
+// ---------- Auth Middlewares ----------
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'Token manquant' });
+
+  jwt.verify(token, SECRET_KEY, (err, user) => {
+    if (err) return res.status(401).json({ message: 'Token invalide' });
+    req.user = user; // { id, role }
+    next();
+  });
+}
+
+function adminMiddleware(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Accès réservé aux admins' });
+  }
+  next();
+}
+
+// =====================================================================
+// AUTH
+// =====================================================================
+app.post('/api/auth/login', async (req, res) => {
+  const email = safeEmailRaw(req.body.email);
+  const password = String(req.body.password || '');
+  try {
+    const [rows] = await db.query(
+      'SELECT * FROM users WHERE email = ? AND password = ?',
+      [email, password]
+    );
+    if (!rows.length) return res.status(401).json({ message: 'Identifiants incorrects' });
+
+    const user = rows[0];
+    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+    res.json({ token });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * INSCRIPTION — crée un utilisateur avec :
+ * first_name, last_name, phone, address, postal_code, city, permit_number, email, password
+ * - téléphone : normalisé E.164 (FR)
+ * - permit_number : 14 chiffres (format guichet unique)
+ * - écrit dans la table `users` compatible (name/permitNumber legacy conservés)
+ */
+app.post('/api/register', async (req, res) => {
+  const {
+    first_name,
+    last_name,
+    phone,
+    address,
+    postal_code,
+    city,
+    permit_number,
+    password,
+  } = req.body || {};
+  const email = safeEmailRaw(req.body?.email);
+
+  const errors = [];
+  if (!first_name || !last_name) errors.push('Nom et prénom requis');
+  const normalizedPhone = normPhone(phone);
+  if (!normalizedPhone) errors.push('Téléphone invalide');
+  if (!/^[0-9]{14}$/.test(String(permit_number || ''))) errors.push('Numéro de permis invalide (14 chiffres)');
+  if (!email) errors.push('Email requis');
+  if (!password) errors.push('Mot de passe requis');
+  if (errors.length) return res.status(400).json({ errors });
+
+  try {
+    // doublon email (feedback rapide)
+    const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length) return res.status(409).json({ message: 'Un compte existe déjà avec cet e-mail' });
+
+    const fullName = `${String(first_name).trim()} ${String(last_name).trim()}`.trim();
+
+    // INSERT principal — on renseigne les deux colonnes de permis pour compat
+    const [ins] = await db.query(
+      `INSERT INTO users
+       (first_name, last_name, name, email, password, phone, permit_number, permitNumber, address, postal_code, city, role)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        String(first_name).trim(),
+        String(last_name).trim(),
+        fullName,
+        email,
+        String(password),            // TODO: bcrypt en prod
+        normalizedPhone,
+        String(permit_number),
+        String(permit_number),       // legacy
+        address || null,
+        postal_code || null,
+        city || null,
+        'user',
+      ]
+    );
+
+    return res.status(201).json({ message: 'Inscription réussie', id: ins.insertId });
+  } catch (e) {
+    if (e && e.code === 'ER_DUP_ENTRY') {
+      const msg = /uq_users_permit_number|uq_users_permitNumber/i.test(e.message || '')
+        ? 'Un compte existe déjà avec ce numéro de permis'
+        : /uq_users_email/i.test(e.message || '')
+        ? 'Un compte existe déjà avec cet e-mail'
+        : 'Doublon détecté';
+      return res.status(409).json({ message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// =====================================================================
+// UTILISATEUR
+// =====================================================================
+app.get('/api/users/me', authMiddleware, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      'SELECT id, name, email, phone, permitNumber, photoUrl, role FROM users WHERE id = ?',
+      [req.user.id]
+    );
+    if (!rows.length) return res.status(401).json({ message: 'Session invalide' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.put('/api/users/me', authMiddleware, async (req, res) => {
+  const { name, phone, photoUrl } = req.body || {};
+  try {
+    const norm = phone ? normPhone(phone) : null;
+    await db.query('UPDATE users SET name = ?, phone = ?, photoUrl = ? WHERE id = ?', [
+      name || null,
+      norm || null,
+      photoUrl || null,
+      req.user.id,
+    ]);
+    res.json({ message: 'Profil mis à jour' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Recherche par téléphone (WhatsApp-like)
+app.get('/api/users/by-phone', authMiddleware, async (req, res) => {
+  const phone = normPhone(req.query.phone || '');
+  if (!phone) return res.status(400).json({ message: 'Téléphone invalide' });
+
+  try {
+    const [rows] = await db.query('SELECT id, name, phone, photoUrl FROM users WHERE phone = ?', [phone]);
+    if (!rows.length) return res.status(404).json({ message: 'Utilisateur introuvable' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// =====================================================================
+// BATTUES
+// =====================================================================
+app.get('/api/battues', authMiddleware, async (_req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM battues');
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.post('/api/battues', authMiddleware, adminMiddleware, async (req, res) => {
+  const { title, location, date, imageUrl, description, latitude, longitude, type, isPrivate } = req.body || {};
+  if (!title || !date) return res.status(400).json({ message: 'Titre et date sont requis' });
+
+  try {
+    await db.query(
+      'INSERT INTO battues (title, location, date, imageUrl, description, latitude, longitude, type, isPrivate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, location, date, imageUrl, description, latitude, longitude, type, isPrivate]
+    );
+    res.status(201).json({ message: 'Battue ajoutée avec succès' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.delete('/api/battues/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const [r] = await db.query('DELETE FROM battues WHERE id = ?', [req.params.id]);
+    if (!r.affectedRows) return res.status(404).json({ message: 'Battue non trouvée' });
+    res.json({ message: 'Battue supprimée avec succès' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// =====================================================================
+// FAVORIS
+// =====================================================================
+app.post('/api/favorites', authMiddleware, async (req, res) => {
+  const { battue_id } = req.body || {};
+  if (!battue_id) return res.status(400).json({ message: 'ID battue requis' });
+
+  try {
+    await db.query('INSERT INTO favorites (user_id, battue_id) VALUES (?, ?)', [req.user.id, battue_id]);
+    res.status(201).json({ message: 'Ajouté aux favoris' });
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Déjà en favoris' });
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.get('/api/favorites', authMiddleware, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT b.* FROM favorites f
+       JOIN battues b ON f.battue_id = b.id
+       WHERE f.user_id = ?`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.delete('/api/favorites/:battue_id', authMiddleware, async (req, res) => {
+  try {
+    await db.query('DELETE FROM favorites WHERE user_id = ? AND battue_id = ?', [
+      req.user.id,
+      req.params.battue_id,
+    ]);
+    res.json({ message: 'Retiré des favoris' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// =====================================================================
+// CHAT (REST) — inchangé
+// =====================================================================
+app.get('/api/conversations', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const sql = `
+      SELECT
+        c.id,
+        c.is_group,
+        c.title,
+        lm.id         AS lm_id,
+        lm.sender_id  AS lm_sender_id,
+        lm.body       AS lm_body,
+        lm.created_at AS lm_created_at,
+        c.created_at  AS conv_created_at
+      FROM conversations c
+      JOIN conversation_participants cp
+        ON cp.conversation_id = c.id AND cp.user_id = ?
+      LEFT JOIN (
+        SELECT m.*
+        FROM messages m
+        JOIN (
+          SELECT conversation_id, MAX(id) AS max_id
+          FROM messages
+          GROUP BY conversation_id
+        ) t ON t.conversation_id = m.conversation_id AND t.max_id = m.id
+      ) lm ON lm.conversation_id = c.id
+      ORDER BY (lm.id IS NULL) ASC, lm.created_at DESC, c.created_at DESC
+    `;
+
+    const [rows] = await db.query(sql, [userId]);
+
+    const out = rows.map((r) => ({
+      id: r.id,
+      is_group: !!r.is_group,
+      title: r.title,
+      last_message: r.lm_id
+        ? {
+            id: r.lm_id,
+            sender_id: r.lm_sender_id,
+            body: r.lm_body,
+            created_at: r.lm_created_at,
+          }
+        : null,
+    }));
+
+    res.json(out);
+  } catch (e) {
+    console.error('GET /api/conversations error:', e);
+    res.status(500).json({ message: 'Erreur serveur (conversations)' });
+  }
+});
+
+app.post('/api/conversations', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const { peerId, title, memberIds } = req.body || {};
+
+  try {
+    let conversationId;
+
+    if (peerId) {
+      const [exist] = await db.query(
+        `
+        SELECT c.id
+        FROM conversations c
+        JOIN conversation_participants a ON a.conversation_id = c.id AND a.user_id = ?
+        JOIN conversation_participants b ON b.conversation_id = c.id AND b.user_id = ?
+        WHERE c.is_group = 0
+        LIMIT 1
+      `,
+        [userId, peerId]
+      );
+      if (exist.length) return res.json({ id: exist[0].id });
+
+      const [ins] = await db.query('INSERT INTO conversations (is_group) VALUES (0)');
+      conversationId = ins.insertId;
+      await db.query(
+        'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)',
+        [conversationId, userId, conversationId, peerId]
+      );
+    } else {
+      const [ins] = await db.query('INSERT INTO conversations (is_group, title) VALUES (1, ?)', [
+        title || null,
+      ]);
+      conversationId = ins.insertId;
+      const participants = Array.from(new Set([userId, ...(memberIds || [])]));
+      if (participants.length) {
+        const placeholders = participants.map(() => '(?, ?, ?)').join(',');
+        const values = participants.flatMap((uid) => [
+          conversationId,
+          uid,
+          uid === userId ? 'admin' : 'member',
+        ]);
+        await db.query(
+          `INSERT INTO conversation_participants (conversation_id, user_id, role) VALUES ${placeholders}`,
+          values
+        );
+      }
+    }
+    res.status(201).json({ id: conversationId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.post('/api/conversations/by-phone', authMiddleware, async (req, res) => {
+  const me = req.user.id;
+  const phone = normPhone(req.body.phone || '');
+  if (!phone) return res.status(400).json({ message: 'Téléphone invalide' });
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [u] = await conn.query('SELECT id FROM users WHERE phone = ?', [phone]);
+    if (!u.length) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+    const peerId = u[0].id;
+
+    const [exist] = await conn.query(
+      `
+      SELECT c.id
+      FROM conversations c
+      JOIN conversation_participants a ON a.conversation_id = c.id AND a.user_id = ?
+      JOIN conversation_participants b ON b.conversation_id = c.id AND b.user_id = ?
+      WHERE c.is_group = 0
+      LIMIT 1
+    `,
+      [me, peerId]
+    );
+
+    if (exist.length) {
+      await conn.commit();
+      return res.json({ id: exist[0].id, created: false });
+    }
+
+    const [ins] = await conn.query('INSERT INTO conversations (is_group) VALUES (0)');
+    const convId = ins.insertId;
+    await conn.query(
+      'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)',
+      [convId, me, convId, peerId]
+    );
+
+    await conn.commit();
+    res.status(201).json({ id: convId, created: true });
+  } catch (e) {
+    await conn.rollback();
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.get('/api/messages/:conversationId', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const { conversationId } = req.params;
+  const limit = Math.min(parseInt(req.query.limit || '20', 10), 50);
+  const before = req.query.before ? Number(req.query.before) : null;
+
+  try {
+    const [part] = await db.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
+    if (!part.length) return res.status(403).json({ message: 'Accès interdit' });
+
+    const sql = `
+      SELECT id, sender_id, body, attachments, created_at
+      FROM messages
+      WHERE conversation_id = ?
+      ${before ? 'AND id < ?' : ''}
+      ORDER BY id DESC
+      LIMIT ?
+    `;
+    const params = before ? [conversationId, before, limit] : [conversationId, limit];
+    const [rows] = await db.query(sql, params);
+
+    res.json(rows.reverse());
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.post('/api/messages', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const { conversationId, body, attachments } = req.body || {};
+  if (!conversationId || (!body && !attachments)) {
+    return res.status(400).json({ message: 'conversationId et body/attachments requis' });
+  }
+
+  try {
+    const [part] = await db.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, userId]
+    );
+    if (!part.length) return res.status(403).json({ message: 'Accès interdit' });
+
+    const [ins] = await db.query(
+      'INSERT INTO messages (conversation_id, sender_id, body, attachments) VALUES (?, ?, ?, ?)',
+      [conversationId, userId, body || null, attachments ? JSON.stringify(attachments) : null]
+    );
+
+    const [row] = await db.query('SELECT * FROM messages WHERE id = ?', [ins.insertId]);
+    const message = row[0];
+
+    const io = req.app.get('io');
+    io.to(`conv:${conversationId}`).emit('message:new', { conversationId, message });
+
+    const [members] = await db.query(
+      'SELECT user_id FROM conversation_participants WHERE conversation_id = ?',
+      [conversationId]
+    );
+    members.forEach(({ user_id }) => {
+      io.to(`user:${user_id}`).emit('message:new', { conversationId, message });
+    });
+
+    res.status(201).json(message);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// =====================================================================
+// SOCKET.IO
+// =====================================================================
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || null;
+  if (!token) return next(new Error('no_token'));
+  jwt.verify(token, SECRET_KEY, (err, user) => {
+    if (err) return next(new Error('invalid_token'));
+    socket.user = user; // { id, role }
+    next();
+  });
+});
+
+io.on('connection', (socket) => {
+  const userId = socket.user.id;
+
+  socket.join(`user:${userId}`);
+
+  socket.on('conversation:join', (conversationId) => {
+    socket.join(`conv:${conversationId}`);
+  });
+
+  socket.on('typing', ({ conversationId, isTyping }) => {
+    socket.to(`conv:${conversationId}`).emit('typing', { userId, isTyping });
+  });
+
+  socket.on('messages:read', async ({ conversationId, lastMessageId }) => {
+    try {
+      await db.query(
+        'UPDATE conversation_participants SET last_read_message_id = GREATEST(COALESCE(last_read_message_id,0), ?) WHERE conversation_id = ? AND user_id = ?',
+        [lastMessageId, conversationId, userId]
+      );
+      io.to(`conv:${conversationId}`).emit('messages:read', { userId, lastMessageId });
+    } catch (e) {
+      console.error(e);
+    }
+  });
+});
+
+// Exposer IO aux routes
+app.set('io', io);
+
+// =====================================================================
+// START
+// =====================================================================
+const networkInterfaces = os.networkInterfaces();
+const localIp =
+  Object.values(networkInterfaces)
+    .flat()
+    .find((iface) => iface && iface.family === 'IPv4' && !iface.internal)?.address || 'localhost';
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`API ChasseAlerte (HTTP + Socket.IO) sur http://${localIp}:${PORT}`);
+});

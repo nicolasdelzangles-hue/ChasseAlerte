@@ -1,0 +1,74 @@
+# =========================================================
+# GLOBAL
+# =========================================================
+.DS_Store
+*.log
+*.tmp
+
+# =========================================================
+# ENV
+# =========================================================
+*.env
+.env
+**/*.env
+backend/.env
+flutter_app/assets/*.env
+
+# =========================================================
+# NODE BACKEND
+# =========================================================
+backend/node_modules/
+backend/logs/
+backend/uploads/
+backend/*.pem
+backend/*.key
+
+# =========================================================
+# FLUTTER / DART
+# =========================================================
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+flutter_app/.packages
+flutter_app/.pub-cache/
+flutter_app/.pub/
+flutter_app/build/
+flutter_app/pubspec.lock
+
+# FLUTTER WEB BUILD
+flutter_app/web/main.dart.js
+flutter_app/web/main.dart.js.map
+
+# ANDROID BUILD
+flutter_app/android/.gradle/
+flutter_app/android/local.properties
+flutter_app/android/app/release/
+flutter_app/android/app/profile/
+flutter_app/android/app/debug/
+
+# iOS BUILD
+flutter_app/ios/Pods/
+flutter_app/ios/Flutter/Flutter.framework
+flutter_app/ios/Flutter/Flutter.podspec
+flutter_app/ios/Runner.xcworkspace/
+
+# =========================================================
+# ARCHIVES
+# =========================================================
+*.zip
+*.rar
+*.7z
+
+# =========================================================
+# SECURITY
+# =========================================================
+clés API.txt
+clé API.txt
+*.pem
+*.key
+# Build Flutter web pour GitHub Pages
+docs/main.dart.js
+docs/main.dart.js.map
+docs/assets/*.env
+docs/flutter_service_worker.js
+docs/assets/NOTICES

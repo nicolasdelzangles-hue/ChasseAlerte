@@ -1,0 +1,68 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio build artifacts
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+##################################################
+# 🔐 SPECIAL : SÉCURISATION DES CLÉS API
+##################################################
+
+# Environment files (backend + flutter + web)
+**/.env
+.env
+*.env
+
+# Dart API keys config
+**/api_keys.dart
+flutter_app/lib/config/api_keys.dart
+
+# Flutter web files (clé compilée dans main.dart.js)
+flutter_app/build/web/
+flutter_app/web/main.dart.js
+flutter_app/web/main.dart.js.map
+flutter_app/web/assets/
+
+# Backend sensitive
+backend/.env
+backend/node_modules/
+backend/logs/
+
+# Flutter assets env
+flutter_app/assets/*.env
+flutter_app/docs/assets/*.env
