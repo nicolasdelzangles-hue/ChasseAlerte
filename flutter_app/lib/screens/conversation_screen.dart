@@ -6,7 +6,7 @@ import '../services/api_services.dart';
 import '../services/chat_services.dart';
 
 // Utilisé pour le ChatService (même base que l'API)
-const String kApiBaseUrl = 'http://localhost:3000';
+const String kApiBaseUrl = 'ApiConfig.baseUrl';
 
 class ConversationsScreen extends StatefulWidget {
   const ConversationsScreen({super.key});

@@ -43,7 +43,7 @@ module.exports = router;
 
   Future<void> fetchMessages() async {
     // Remplace par ton appel API
-    final response = await http.get(Uri.parse('http://localhost:3000/messages'));
+    final response = await http.get(Uri.parse('ApiConfig.baseUrl/messages'));
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       setState(() {
@@ -60,7 +60,7 @@ module.exports = router;
       timestamp: DateTime.now(),
     );
     await http.post(
-      Uri.parse('http://localhost:3000/messages'),
+      Uri.parse('ApiConfig.baseUrl/messages'),
       body: jsonEncode(msg.toJson()),
       headers: {'Content-Type': 'application/json'},
     );

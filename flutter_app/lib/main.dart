@@ -39,7 +39,7 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<ChatProvider>(
           create: (_) =>
-              ChatProvider(apiBase: 'http://localhost:3000')..init(),
+              ChatProvider(apiBase: 'ApiConfig.baseUrl')..init(),
         ),
       ],
       child: const ChasseAlerteApp(),

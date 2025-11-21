@@ -26,15 +26,19 @@ const app = express();
 const SERVER_KEY =
   process.env.GOOGLE_MAPS_SERVER_KEY ||
   process.env.MINI_MAP_SERVER_KEY ||
-  process.env.GOOGLE_MAPS_SERVER_KEY2||
-   
-  console.log('[CFG] SERVER_KEY present:', !!SERVER_KEY);// fallback si tu l'as déjà
-  
+  process.env.GOOGLE_MAPS_SERVER_KEY2 ||
+  null;
+
+console.log('[CFG] SERVER_KEY present:', !!SERVER_KEY);
+ 
 // ======================= Config =======================
 // Ports/host (override via env)
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const SECRET_KEY = process.env.JWT_SECRET || 'chassealerte_secret';
+// Secrets JWT unifiés (API + Socket.IO)
+const ACCESS_SECRET  = process.env.ACCESS_SECRET  || SECRET_KEY;
+const REFRESH_SECRET = process.env.REFRESH_SECRET || SECRET_KEY;
 
 // MySQL pool
 const db = mysql.createPool({
@@ -72,7 +76,7 @@ const loginLimiter = rateLimit({
 function createAccessToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.ACCESS_SECRET,
+    ACCESS_SECRET,
     { expiresIn: '15m' }
   );
 }
@@ -80,10 +84,11 @@ function createAccessToken(user) {
 function createRefreshToken(user) {
   return jwt.sign(
     { id: user.id },
-    process.env.REFRESH_SECRET,
+    REFRESH_SECRET,
     { expiresIn: '7d' }
   );
 }
+
 
 
 // Log de chaque requête entrante + durée
@@ -310,7 +315,7 @@ function authMiddleware(req, res, next) {
   if (type !== "Bearer" || !token)
     return res.status(401).json({ error: "Authorization invalide" });
 
-  jwt.verify(token, process.env.ACCESS_SECRET, (err, payload) => {
+jwt.verify(token, ACCESS_SECRET, (err, payload) => {
     if (err) return res.status(401).json({ error: "Token expiré ou invalide" });
     req.user = payload;  
     next();
@@ -366,7 +371,7 @@ app.post('/api/auth/refresh', async (req, res) => {
     );
     if (!rows.length) return res.status(401).json({ error: 'Refresh Token invalide' });
 
-    const data = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+const data = jwt.verify(refreshToken, REFRESH_SECRET);
 
     const [u] = await db.query("SELECT * FROM users WHERE id = ?", [data.id]);
     if (!u.length) return res.status(404).json({ error: 'User not found' });
@@ -1222,27 +1227,7 @@ app.get('/api/geocode', async (req, res) => {
     return res.status(500).json({ error: 'Erreur géocodage Google', details: e.message });
   }
 });
-app.get('/api/places', async (req, res) => {
-  const id = req.reqId;
-  const input = (req.query.input || '').toString();
-  console.log(`[PLACES ${id}] input=`, input);
 
-  if (!SERVER_KEY) return res.status(500).json({ error: 'Clé serveur manquante' });
-  if (!input)     return res.json({ predictions: [] });
-
-  try {
-    const r = await axiosInstance.get('https://maps.googleapis.com/maps/api/place/autocomplete/json', {
-      params: { input, key: SERVER_KEY, language: 'fr', types: '(regions)' },
-      headers: { 'X-Req-Id': id },
-      timeout: 8000,
-    });
-    console.log(`[PLACES ${id}] status=${r.data?.status} preds=${r.data?.predictions?.length || 0}`);
-    return res.status(200).json(r.data);
-  } catch (e) {
-    console.log(`[PLACES ${id}] 500 ERROR:`, e.response?.status, e.response?.data || e.message);
-    return res.status(500).json({ error: 'Erreur Places', details: e.message });
-  }
-});
 
 
 // --- 2) Place Details ---
@@ -1465,41 +1450,7 @@ app.get('/api/reports', async (req, res) => {
 });
 
 // ======================= ROUTE GEOENCODAGE GOOGLE =======================
-//const axios = require('axios');
-app.get('/api/geocode', async (req, res) => {
-  const id = req.reqId;
-  const q = ((req.query.q ?? req.query.address) || '').toString().trim(); // tolère 'address'
-  console.log(`[GEO ${id}] input=`, q);
 
-  if (!q) {
-    console.log(`[GEO ${id}] 400: Paramètre q manquant`);
-    return res.status(400).json({ error: 'Paramètre q manquant' });
-  }
-  if (!SERVER_KEY) {
-    console.log(`[GEO ${id}] 500: Clé serveur manquante`);
-    return res.status(500).json({ error: 'Clé serveur manquante' });
-  }
-
-  try {
-    const r = await axiosInstance.get('https://maps.googleapis.com/maps/api/geocode/json', {
-      params: { address: q, key: SERVER_KEY, language: 'fr' },
-      headers: { 'X-Req-Id': id },
-      timeout: 10000,
-    });
-
-    console.log(`[GEO ${id}] status=${r.data?.status} results=${r.data?.results?.length || 0}`);
-
-    if (r.data.status !== 'OK' || !r.data.results?.length) {
-      return res.status(404).json({ error: r.data.status || 'Adresse introuvable', raw: r.data });
-    }
-    const best = r.data.results[0];
-    const { lat, lng } = best.geometry.location;
-    return res.json({ lat, lon: lng, displayName: best.formatted_address });
-  } catch (e) {
-    console.log(`[GEO ${id}] 500 ERROR:`, e.response?.status, e.response?.data || e.message);
-    return res.status(500).json({ error: 'Erreur géocodage Google', details: e.message });
-  }
-});
 
 
 /* ==================== Helpers d’interprétation ==================== */
@@ -1794,12 +1745,13 @@ const io = new Server(server, {
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token || null;
   if (!token) return next(new Error('no_token'));
-  jwt.verify(token, SECRET_KEY, (err, user) => {
+  jwt.verify(token, ACCESS_SECRET, (err, user) => {
     if (err) return next(new Error('invalid_token'));
     socket.user = user; // { id, role }
     next();
   });
 });
+
 
 io.on('connection', (socket) => {
   const userId = socket.user.id;

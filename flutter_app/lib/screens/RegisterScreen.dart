@@ -23,7 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
 
   // 👉 Adapte l'URL si besoin (3000/3001, IP locale, etc.)
-  static const String _registerUrl = 'http://localhost:3000/api/register';
+  static const String _registerUrl = 'ApiConfig.baseUrl/api/register';
 
   // Normalisation simple FR
   String normalizePhone(String raw) {

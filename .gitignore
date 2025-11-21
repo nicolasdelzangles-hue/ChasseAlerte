@@ -67,8 +67,10 @@ clé API.txt
 *.pem
 *.key
 # Build Flutter web pour GitHub Pages
-docs/main.dart.js
-docs/main.dart.js.map
-docs/assets/*.env
-docs/flutter_service_worker.js
+# ⚠ On ne doit PAS ignorer les fichiers JS de docs/,
+# sinon GitHub Pages ne peut pas servir l'appli.
+# docs/main.dart.js
+# docs/main.dart.js.map
+docs/assets/*.env      # OK : protège toujours tes fichiers .env
+# docs/flutter_service_worker.js
 docs/assets/NOTICES

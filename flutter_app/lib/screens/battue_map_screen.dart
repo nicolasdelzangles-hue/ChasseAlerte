@@ -18,7 +18,7 @@ class BattueMapScreen extends StatefulWidget {
 
 class _BattueMapScreenState extends State<BattueMapScreen> {
   // ====== CONFIG ======
-  static const String _apiBase = 'http://localhost:3000';
+  static const String _apiBase = 'ApiConfig.baseUrl';
 
   /// Limitation du viewport (France métropolitaine)
   static final LatLngBounds _frBounds = LatLngBounds(

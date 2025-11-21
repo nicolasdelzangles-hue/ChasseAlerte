@@ -8,6 +8,9 @@ import 'dart:io' show Platform;
 import '../services/logger.dart';
 import '../models/user.dart';
 import '../models/battue.dart';
+class ApiConfig {
+  static const String baseUrl = "https://chassealerte.onrender.com";
+}
 
 class ApiServices {
   static String? _overrideBase;
@@ -21,14 +24,21 @@ class ApiServices {
   }
 
   static String _detectBaseUrl() {
-    if (kIsWeb) return 'http://localhost:3000';
-    try {
-      if (Platform.isAndroid) return 'http://10.0.2.2:3000';
-      return 'http://localhost:3000';
-    } catch (_) {
-      return 'http://localhost:3000';
-    }
+  // 🌍 Tout ce qui tourne dans un navigateur (Chrome, GitHub Pages, etc.)
+  if (kIsWeb) {
+    // ⬇⬇⬇ mets ici TON URL Render ⬇⬇⬇
+    return 'https://chassealerte.onrender.com';
   }
+
+  // 📱 Android (émulateur ou device)
+  if (Platform.isAndroid) {
+    return 'http://10.0.2.2:3000'; // ton backend local si tu le lances en dev
+  }
+
+  // 💻 Autres (Windows, macOS en local)
+  return 'ApiConfig.baseUrl';
+}
+
 
   // -------------------- Helpers HTTP --------------------
   static Uri _u(String path, [Map<String, dynamic>? q]) =>

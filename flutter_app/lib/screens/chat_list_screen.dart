@@ -17,8 +17,8 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   // Adapte à ton réseau si besoin
-  static const String _apiBase = 'http://localhost:3000/api';
-  static const String _socketUrl = 'http://localhost:3000';
+  static const String _apiBase = 'ApiConfig.baseUrl/api';
+  static const String _socketUrl = 'ApiConfig.baseUrl';
 
   final _phoneCtrl = TextEditingController();
   final _phoneFocus = FocusNode();

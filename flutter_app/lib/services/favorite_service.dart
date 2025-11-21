@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class FavoriteService {
-  static const String baseUrl = 'http://localhost:3000'; // adapte si besoin
+  static const String baseUrl = 'ApiConfig.baseUrl'; // adapte si besoin
 
   static Future<void> toggleFavorite(int userId, int battueId) async {
     final url = Uri.parse('$baseUrl/api/favorites');
