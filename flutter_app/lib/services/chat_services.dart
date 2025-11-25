@@ -6,7 +6,7 @@ import 'package:socket_io_client/socket_io_client.dart' as sio;
 class ChatService {
   ChatService({required this.baseUrl, required this.token});
 
-  final String baseUrl; // ex: http://localhost:3000/api
+  final String baseUrl = 'ApiConfig.baseUrl'; // ex: http://localhost:3000/api
   final String token;
 sio.Socket? _socket;
   Map<String, String> get _headers => {

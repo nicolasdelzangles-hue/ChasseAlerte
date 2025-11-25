@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ConvFavoriteService {
-  final String baseUrl; // ex: http://localhost:3000/api
+  final String baseUrl = 'ApiConfig.baseUrl'; // ex: http://localhost:3000/api
   final String token;
 
   ConvFavoriteService({required this.baseUrl, required this.token});
