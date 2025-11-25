@@ -34,11 +34,11 @@ class ApiServices {
 
   // 📱 Android (émulateur ou device)
   if (Platform.isAndroid) {
-    return 'http://10.0.2.2:3000'; // ton backend local si tu le lances en dev
+   return 'https://chassealerte.onrender.com'; // ton backend local si tu le lances en dev
   }
 
   // 💻 Autres (Windows, macOS en local)
-  return 'ApiConfig.baseUrl';
+  return ApiConfig.baseUrl;
 }
 
 
