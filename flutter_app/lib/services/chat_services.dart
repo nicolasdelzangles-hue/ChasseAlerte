@@ -6,8 +6,8 @@ import 'package:socket_io_client/socket_io_client.dart' as sio;
 class ChatService {
   ChatService({required this.baseUrl, required this.token});
 
-  /// Exemple : "https://chassealerte.onrender.com"
-  /// (SANS /api à la fin, on l’ajoute nous-mêmes)
+  /// Exemple : "https://chassealerte.onrender.com/api"
+  /// (AVEC /api à la fin, comme ApiServices.baseUrl)
   final String baseUrl;
   final String token;
 
@@ -21,6 +21,8 @@ class ChatService {
 
   /// Helper pour construire les URL de l’API
   Uri _u(String path, [Map<String, String>? q]) {
+    // baseUrl = https://.../api
+    // path    = /conversations, /messages/12, ...
     return Uri.parse('$baseUrl$path').replace(queryParameters: q);
   }
 
@@ -42,8 +44,9 @@ class ChatService {
   // ---------- REST ----------
 
   Future<List<dynamic>> getConversations() async {
+    // ❌ AVANT : /api/conversations  → /api/api/conversations
     final r = await http.get(
-      _u('/api/conversations'),
+      _u('/conversations'),
       headers: _headers,
     );
     if (r.statusCode != 200) {
@@ -54,7 +57,7 @@ class ChatService {
 
   Future<void> deleteConversation(int id) async {
     final r = await http.delete(
-      _u('/api/conversations/$id'),
+      _u('/conversations/$id'),
       headers: _headers,
     );
     if (r.statusCode != 204 && r.statusCode != 200) {
@@ -74,7 +77,7 @@ class ChatService {
       if (before != null) 'before': before.toString(),
     };
 
-    final uri = _u('/api/messages/$conversationId', params);
+    final uri = _u('/messages/$conversationId', params);
     final r = await http.get(uri, headers: _headers);
     return (_parse(r) as List).cast<dynamic>();
   }
@@ -83,7 +86,7 @@ class ChatService {
   /// Renvoie { id, created? }
   Future<Map<String, dynamic>> createConversationByPhone(String e164) async {
     final r = await http.post(
-      _u('/api/conversations/by-phone'),
+      _u('/conversations/by-phone'),
       headers: _headers,
       body: jsonEncode({'phone': e164}),
     );
@@ -100,7 +103,7 @@ class ChatService {
     String body,
   ) async {
     final r = await http.post(
-      _u('/api/messages'),
+      _u('/messages'),
       headers: _headers,
       body: jsonEncode({'conversationId': conversationId, 'body': body}),
     );
@@ -109,7 +112,7 @@ class ChatService {
 
   // 🔎 map téléphone -> user (id, etc.)
   Future<Map<String, dynamic>?> userByPhone(String e164) async {
-    final uri = _u('/api/users/by-phone', {'phone': e164});
+    final uri = _u('/users/by-phone', {'phone': e164});
     final r = await http.get(uri, headers: _headers);
 
     if (r.statusCode == 404) return null;
@@ -122,7 +125,7 @@ class ChatService {
   }
 
   Future<List<Map<String, dynamic>>> searchUsers(String q) async {
-    final uri = _u('/api/users/search', {'q': q});
+    final uri = _u('/users/search', {'q': q});
     final r = await http.get(uri, headers: _headers);
 
     if (r.statusCode != 200) {
@@ -140,7 +143,7 @@ class ChatService {
     required List<int> memberIds,
   }) async {
     final r = await http.post(
-      _u('/api/conversations'),
+      _u('/conversations'),
       headers: _headers,
       body: jsonEncode({'title': title, 'memberIds': memberIds}),
     );
@@ -154,12 +157,15 @@ class ChatService {
 
   // ---------- Socket.IO ----------
 
-  /// `socketUrl` = ex: "https://chassealerte.onrender.com"
+  /// `socketUrl` peut être AVEC ou SANS /api, on nettoie.
   sio.Socket connectSocket(String socketUrl) {
     dispose(); // nettoie si déjà ouvert
 
+    // si on reçoit https://.../api → on enlève le /api
+    final normalized = socketUrl.replaceFirst(RegExp(r'/api/?$'), '');
+
     _socket = sio.io(
-      socketUrl,
+      normalized,
       sio.OptionBuilder()
           .setTransports(['websocket'])
           .enableAutoConnect()

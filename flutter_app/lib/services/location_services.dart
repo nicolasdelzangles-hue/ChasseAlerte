@@ -209,9 +209,16 @@ class WeatherBundle {
 class MeteoFranceService {
   /// ⚙️ Méthode existante — garde ton API identique
   static Future<WeatherBundle> fetch(double lat, double lon) async {
-    final base = ApiServices.baseUrl;
-    final uri = Uri.parse('$base/api/meteo?lat=$lat&lon=$lon');
+    final base = ApiServices.baseUrl; // ex: https://chassealerte.onrender.com/api
+
+    // IMPORTANT : base contient déjà /api → on ajoute seulement /meteo
+    final uri = Uri.parse('$base/meteo').replace(queryParameters: {
+      'lat': lat.toString(),
+      'lon': lon.toString(),
+    });
+
     if (kDebugMode) debugPrint('[HTTP] GET $uri');
+
     final res = await http.get(uri, headers: {'Accept': 'application/json'});
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}: ${res.body}');
