@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ConvFavoriteService {
-  final String baseUrl = 'ApiConfig.baseUrl'; // ex: http://localhost:3000/api
+  final String baseUrl;   // ex: https://chassealerte.onrender.com
   final String token;
 
   ConvFavoriteService({required this.baseUrl, required this.token});
@@ -13,14 +13,22 @@ class ConvFavoriteService {
         'Authorization': 'Bearer $token',
       };
 
-  /// Liste des ID de conversations mises en favoris par l'utilisateur courant
+  /// Helper pour construire l’URL API
+  Uri _u(String path) => Uri.parse('$baseUrl$path');
+
+  /// Liste des ID de conversations mises en favoris
   Future<List<int>> fetchFavorites() async {
-    final r = await http.get(Uri.parse('$baseUrl/conv-favorites'), headers: _headers);
+    final r = await http.get(
+      _u('/api/conv-favorites'),
+      headers: _headers,
+    );
+
     if (r.statusCode != 200) {
       throw Exception('Chargement favoris impossible (${r.statusCode})');
     }
+
     final body = jsonDecode(r.body);
-    // retourne List<int> (accepte {conversation_id: x} ou x)
+
     if (body is List) {
       return body
           .map((e) => (e is Map ? e['conversation_id'] : e))
@@ -28,14 +36,14 @@ class ConvFavoriteService {
           .whereType<int>()
           .toList();
     }
+
     return <int>[];
   }
 
-  /// Toggle serveur : si favori existant -> DELETE, sinon -> POST
+  /// Toggle favori serveur
   Future<void> toggleFavorite(int conversationId) async {
-    // on tente un POST; si 409 -> on DELETE
     final post = await http.post(
-      Uri.parse('$baseUrl/conv-favorites'),
+      _u('/api/conv-favorites'),
       headers: _headers,
       body: jsonEncode({'conversation_id': conversationId}),
     );
@@ -45,10 +53,11 @@ class ConvFavoriteService {
     if (post.statusCode == 409) {
       // déjà favori -> on supprime
       final del = await http.delete(
-        Uri.parse('$baseUrl/conv-favorites/$conversationId'),
+        _u('/api/conv-favorites/$conversationId'),
         headers: _headers,
       );
       if (del.statusCode == 200 || del.statusCode == 204) return;
+
       throw Exception('Suppression favori impossible (${del.statusCode})');
     }
 
