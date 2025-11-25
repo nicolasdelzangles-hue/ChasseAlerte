@@ -42,10 +42,11 @@ const REFRESH_SECRET = process.env.REFRESH_SECRET || SECRET_KEY;
 
 // MySQL pool
 const db = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'chassealerte',
+  host: process.env.DB_HOST ,
+  user: process.env.DB_USER ,
+  password: process.env.DB_PORT || '3306',
+  database: process.env.DB_NAME ,
+  password: process.env.DB_PASSWORD,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
