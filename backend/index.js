@@ -1169,7 +1169,7 @@ if (!SERVER_KEY) {
 app.get('/api/places', authMiddleware, async (req, res) => {
   try {
     const input = String(req.query.input || '').trim();
-    if (!input) return res.json({ status: 'ZERO_RESULTS', predictions: [] });
+    if (!input) return res.json({ status: 'ZERO_RESULTS', predictions: [] }); 
 
     const { data } = await axios.get(
       'https://maps.googleapis.com/maps/api/place/autocomplete/json',
