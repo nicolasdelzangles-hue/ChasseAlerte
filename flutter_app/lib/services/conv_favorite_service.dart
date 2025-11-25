@@ -96,3 +96,4 @@ class ConvFavoriteService {
     throw Exception('Maj favori impossible (${post.statusCode})');
   }
 }
+
