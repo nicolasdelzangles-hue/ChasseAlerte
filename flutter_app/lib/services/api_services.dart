@@ -2,9 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-// plus besoin de Platform ni kIsWeb ici
- import 'package:flutter/foundation.dart' show kIsWeb;
- import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
 
 import '../services/logger.dart';
 import '../models/user.dart';
@@ -12,46 +11,55 @@ import '../models/battue.dart';
 
 class ApiConfig {
   static const String baseUrl = "https://chassealerte.onrender.com";
-  //static const String baseUrl = "http://localhost:3000";
-
+  // static const String baseUrl = "http://localhost:3000";
 }
 
 class ApiServices {
-  static String? _overrideBase;
+  /// Base courante utilisée partout
+  static String _currentBase = ApiConfig.baseUrl;
 
   // -------------------- Base & Socket --------------------
-  static String get baseUrl => _overrideBase ?? _detectBaseUrl();
+  static String get baseUrl {
+    logI('API', 'baseUrl getter -> $_currentBase');
+    return _currentBase;
+  }
+
   static String get socketUrl => baseUrl;
 
+  /// Permet de forcer une autre URL (dev local, etc.)
   static void setBaseUrl(String url) {
-    _overrideBase = url; // ex: 'http://192.168.1.50:3000'
+    _currentBase = url;
+    logI('API', 'setBaseUrl -> $_currentBase');
   }
 
+  /// Gardé au cas où, mais pas utilisé pour l’instant
   static String _detectBaseUrl() {
-  // 🌍 Tout ce qui tourne dans un navigateur (Chrome, GitHub Pages, etc.)
- // 🌍 Web (GitHub Pages)  → toujours Render
-  if (kIsWeb) {
-    return ApiConfig.baseUrl;      // OK !
+    // 🌍 Web (GitHub Pages)  → toujours Render
+    if (kIsWeb) {
+      return ApiConfig.baseUrl;
+    }
+
+    // 📱 Android / iOS → Render aussi
+    if (Platform.isAndroid || Platform.isIOS) {
+      return ApiConfig.baseUrl;
+    }
+
+    // 💻 Desktop
+    return ApiConfig.baseUrl;
   }
 
-  // 📱 Android / iOS → Render aussi
-  if (Platform.isAndroid || Platform.isIOS) {
-    return ApiConfig.baseUrl;      // OK !
-  }
-
-  // 💻 Desktop
-  return ApiConfig.baseUrl;        // OK !
-}
   // -------------------- Helpers HTTP --------------------
-   static Uri _u(String path, [Map<String, dynamic>? q]) =>
-      Uri.parse('$baseUrl$path')
-          .replace(queryParameters: q?.map((k, v) => MapEntry(k, '$v')));
+  static Uri _u(String path, [Map<String, dynamic>? q]) {
+    logI('HTTP', '_u base=$_currentBase path=$path q=$q');
+    return Uri.parse('$_currentBase$path')
+        .replace(queryParameters: q?.map((k, v) => MapEntry(k, '$v')));
+  }
 
   static const _timeout = Duration(seconds: 15);
 
   static Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
-    // 🔐 Nouveau : on lit d’abord accessToken, puis ancien "token" pour compatibilité
+    // accessToken d’abord, puis ancien "token" pour compat
     final token = prefs.getString('accessToken') ?? prefs.getString('token');
     return {
       'Content-Type': 'application/json',
@@ -421,7 +429,7 @@ class ApiServices {
         return data;
       }
       final msg = (data is Map &&
-                  (data['error'] != null ? data['error'] : data['message'])) ??
+              (data['error'] != null ? data['error'] : data['message'])) ??
           'Échec géocodage';
       logI('GEO', 'error: $msg');
       throw Exception(msg);
@@ -431,62 +439,95 @@ class ApiServices {
     }
   }
 
-   static Future<List<dynamic>> placesAutocomplete(String input) async {
-    logI('PLACES', 'input="$input"');
+  static Future<List<dynamic>> placesAutocomplete(String input) async {
+    logI('PLACES', 'input="$input" base=$_currentBase');
 
-    // 🔥 URL ABSOLUE → on bypass complètement baseUrl / _u()
+    // URL ABSOLUE → on bypass complètement _u()
     final uri = Uri.parse(
       'https://chassealerte.onrender.com/api/places',
     ).replace(queryParameters: {'input': input});
 
-    // route protégée → on envoie le token
     final headers = await _authHeaders();
+    logI('PLACES', 'headers.Authorization=${headers['Authorization']}');
 
     logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
+
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-    logI('HTTP', 'BODY = ${r.body}');
+    final snippet =
+        r.body.length > 300 ? r.body.substring(0, 300) : r.body;
+    logI('HTTP', 'BODY snippet="$snippet"');
 
     if (r.statusCode != 200) {
       throw Exception('Places HTTP ${r.statusCode}');
     }
 
-    final data = jsonDecode(r.body);
-    logI('PLACES',
-        'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}');
-    return (data['predictions'] as List?) ?? [];
+    dynamic data;
+    try {
+      data = jsonDecode(r.body);
+      logI('PLACES', 'jsonDecode ok, type=${data.runtimeType}');
+    } catch (e) {
+      logI('PLACES', 'jsonDecode ERROR: $e');
+      rethrow;
+    }
+
+    if (data is! Map<String, dynamic>) {
+      logI('PLACES', 'Réponse inattendue (pas un Map JSON)');
+      throw Exception('Réponse Places inattendue');
+    }
+
+    final preds = (data['predictions'] as List?) ?? [];
+    final status = data['status'];
+    logI('PLACES', 'status=$status count=${preds.length}');
+
+    return preds;
   }
 
   static Future<Map<String, dynamic>> placeDetails(String placeId) async {
-    logI('DETAILS', 'place_id=$placeId');
+    logI('DETAILS', 'place_id=$placeId base=$_currentBase');
 
-    // 🔥 URL ABSOLUE ici aussi
+    // URL ABSOLUE ici aussi
     final uri = Uri.parse(
       'https://chassealerte.onrender.com/api/place-details',
     ).replace(queryParameters: {'place_id': placeId});
 
     final headers = await _authHeaders();
+    logI('DETAILS', 'headers.Authorization=${headers['Authorization']}');
 
     logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
+
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-    logI('HTTP', 'BODY = ${r.body}');
+    final snippet =
+        r.body.length > 300 ? r.body.substring(0, 300) : r.body;
+    logI('HTTP', 'BODY snippet="$snippet"');
 
     if (r.statusCode != 200) {
       throw Exception('Details HTTP ${r.statusCode}');
     }
 
-    final data = jsonDecode(r.body);
+    dynamic data;
+    try {
+      data = jsonDecode(r.body);
+      logI('DETAILS', 'jsonDecode ok, type=${data.runtimeType}');
+    } catch (e) {
+      logI('DETAILS', 'jsonDecode ERROR: $e');
+      rethrow;
+    }
+
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Réponse Details inattendue');
+    }
+
     logI('DETAILS',
         'status=${data['status']} hasResult=${data['result'] != null}');
     return data;
   }
 
-
   // ===================================================================
   // STATS BATTUES
   // ===================================================================
-   static Future<Map<String, dynamic>> getBattueSeries({
+  static Future<Map<String, dynamic>> getBattueSeries({
     required int battueId,
     String granularity = 'day', // 'day' | 'month'
   }) async {
@@ -504,7 +545,7 @@ class ApiServices {
 
   static Future<Map<String, String>> authHeaders() => _authHeaders();
 
- static Future<void> saveBattueStat(
+  static Future<void> saveBattueStat(
       int battueId, Map<String, dynamic> body) async {
     final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats');
     final headers = await authHeaders();

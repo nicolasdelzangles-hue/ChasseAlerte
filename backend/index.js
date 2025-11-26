@@ -56,6 +56,7 @@ const db = mysql.createPool({
 const startHr = () => process.hrtime.bigint();
 const durMs = (t0) => Number((process.hrtime.bigint() - t0) / 1000000n);
 const now = () => new Date().toISOString().replace('T', ' ').replace('Z', '');
+let REQ_COUNTER = 0;
 
 const maskKey = (k) => (typeof k === 'string' && k.length > 8)
   ? k.slice(0, 4) + '...' + k.slice(-4)
@@ -94,14 +95,25 @@ function createRefreshToken(user) {
 
 
 // Log de chaque requête entrante + durée
+// Log de chaque requête entrante + durée + id
 app.use((req, res, next) => {
   const t0 = startHr();
-  logInfo(`HTTP ${req.method} ${req.originalUrl}`, { query: req.query, body: req.body });
+  const id = ++REQ_COUNTER;
+  req.reqId = id;
+
+  logInfo(`[HTTP ${id}] ${req.method} ${req.originalUrl}`, {
+    query: req.query,
+    body: req.body,
+  });
+
   res.on('finish', () => {
-    logInfo(`HTTP ${req.method} ${req.originalUrl} -> ${res.statusCode} (${durMs(t0)} ms)`);
+    logInfo(
+      `[HTTP ${id}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${durMs(t0)} ms)`
+    );
   });
   next();
 });
+
 // ====== AXIOS LOGGING ======
 const axiosInstance = axios.create();
 axiosInstance.interceptors.request.use((config) => {
@@ -1159,45 +1171,71 @@ app.delete('/api/conv-favorites/:conversation_id', authMiddleware, async (req, r
 
 //const axios = require('axios');
 
-// --- 0) Clé serveur unique (PAS de KEY2) ---
-//const SERVER_KEY = process.env.GOOGLE_MAPS_SERVER_KEY2;
+// ======================= GEOCODING & GOOGLE PROXY =======================
+
 if (!SERVER_KEY) {
   console.error('[BOOT][ERROR] SERVER_KEY manquante (.env backend)');
-  // Tu peux process.exit(1) si tu veux bloquer le boot
 }
 
 // --- 1) Autocomplete (Places) ---
 app.get('/api/places', authMiddleware, async (req, res) => {
+  const id = req.reqId || 'noid';
   try {
     const input = String(req.query.input || '').trim();
-    if (!input) return res.json({ status: 'ZERO_RESULTS', predictions: [] }); 
+    console.log(`[PLACES ${id}] input="${input}"`);
 
-    const { data } = await axios.get(
+    if (!input) {
+      console.log(`[PLACES ${id}] ZERO_RESULTS (input vide)`);
+      return res.json({ status: 'ZERO_RESULTS', predictions: [] });
+    }
+
+    if (!SERVER_KEY) {
+      console.log(`[PLACES ${id}] 500: SERVER_KEY manquante`);
+      return res
+        .status(500)
+        .json({ status: 'ERROR', error_message: 'SERVER_KEY manquante' });
+    }
+
+    const { data } = await axiosInstance.get(
       'https://maps.googleapis.com/maps/api/place/autocomplete/json',
       {
         params: {
           input,
-          key: SERVER_KEY,            // <--- UNE SEULE CLÉ
+          key: SERVER_KEY,
           language: 'fr',
           components: 'country:fr',
         },
+        headers: { 'X-Req-Id': id },
         timeout: 10000,
       }
     );
 
-    // Si Google renvoie une erreur, propage-la telle quelle (plus lisible côté client)
+    const preds = Array.isArray(data.predictions) ? data.predictions : [];
+    console.log(
+      `[PLACES ${id}] googleStatus=${data.status} preds=${preds.length}`
+    );
+
     if (data.status && data.status !== 'OK') {
       return res.status(400).json(data);
     }
     res.json(data);
   } catch (e) {
-    console.error('[PLACES][ERR]', e?.response?.data || e.message);
-    res.status(500).json({ status: 'ERROR', error_message: 'proxy_failed' });
+    console.error(
+      `[PLACES ${req.reqId || 'noid'}][ERR]`,
+      e?.response?.data || e.message
+    );
+    res
+      .status(500)
+      .json({ status: 'ERROR', error_message: 'proxy_failed' });
   }
 });
+
+// --- 2) Geocode ---
 app.get('/api/geocode', async (req, res) => {
-  const id = req.reqId;
-  const q = ((req.query.q ?? req.query.address) || '').toString().trim(); // tolère 'address'
+  const id = req.reqId || 'noid';
+  const q = ((req.query.q ?? req.query.address) || '')
+    .toString()
+    .trim();
   console.log(`[GEO ${id}] input=`, q);
 
   if (!q) {
@@ -1206,39 +1244,72 @@ app.get('/api/geocode', async (req, res) => {
   }
   if (!SERVER_KEY) {
     console.log(`[GEO ${id}] 500: Clé serveur manquante`);
-    return res.status(500).json({ error: 'Clé serveur manquante' });
+    return res
+      .status(500)
+      .json({ error: 'Clé serveur manquante' });
   }
 
   try {
-    const r = await axiosInstance.get('https://maps.googleapis.com/maps/api/geocode/json', {
-      params: { address: q, key: SERVER_KEY, language: 'fr' },
-      headers: { 'X-Req-Id': id },
-      timeout: 10000,
-    });
+    const r = await axiosInstance.get(
+      'https://maps.googleapis.com/maps/api/geocode/json',
+      {
+        params: { address: q, key: SERVER_KEY, language: 'fr' },
+        headers: { 'X-Req-Id': id },
+        timeout: 10000,
+      }
+    );
 
-    console.log(`[GEO ${id}] status=${r.data?.status} results=${r.data?.results?.length || 0}`);
+    console.log(
+      `[GEO ${id}] status=${r.data?.status} results=${
+        r.data?.results?.length || 0
+      }`
+    );
 
     if (r.data.status !== 'OK' || !r.data.results?.length) {
-      return res.status(404).json({ error: r.data.status || 'Adresse introuvable', raw: r.data });
+      return res.status(404).json({
+        error: r.data.status || 'Adresse introuvable',
+        raw: r.data,
+      });
     }
     const best = r.data.results[0];
     const { lat, lng } = best.geometry.location;
-    return res.json({ lat, lon: lng, displayName: best.formatted_address });
+    return res.json({
+      lat,
+      lon: lng,
+      displayName: best.formatted_address,
+    });
   } catch (e) {
-    console.log(`[GEO ${id}] 500 ERROR:`, e.response?.status, e.response?.data || e.message);
-    return res.status(500).json({ error: 'Erreur géocodage Google', details: e.message });
+    console.log(
+      `[GEO ${id}] 500 ERROR:`,
+      e.response?.status,
+      e.response?.data || e.message
+    );
+    return res.status(500).json({
+      error: 'Erreur géocodage Google',
+      details: e.message,
+    });
   }
 });
 
-
-
-// --- 2) Place Details ---
+// --- 3) Place Details ---
 app.get('/api/place-details', authMiddleware, async (req, res) => {
+  const id = req.reqId || 'noid';
   try {
     const place_id = String(req.query.place_id || '').trim();
-    if (!place_id) return res.status(400).json({ status: 'INVALID_REQUEST' });
+    console.log(`[DETAILS ${id}] place_id="${place_id}"`);
 
-    const { data } = await axios.get(
+    if (!place_id) {
+      return res.status(400).json({ status: 'INVALID_REQUEST' });
+    }
+
+    if (!SERVER_KEY) {
+      console.log(`[DETAILS ${id}] 500: SERVER_KEY manquante`);
+      return res
+        .status(500)
+        .json({ status: 'ERROR', error_message: 'SERVER_KEY manquante' });
+    }
+
+    const { data } = await axiosInstance.get(
       'https://maps.googleapis.com/maps/api/place/details/json',
       {
         params: {
@@ -1246,8 +1317,15 @@ app.get('/api/place-details', authMiddleware, async (req, res) => {
           key: SERVER_KEY,
           language: 'fr',
         },
+        headers: { 'X-Req-Id': id },
         timeout: 10000,
       }
+    );
+
+    console.log(
+      `[DETAILS ${id}] googleStatus=${data.status} hasResult=${
+        data.result ? 'yes' : 'no'
+      }`
     );
 
     if (data.status && data.status !== 'OK') {
@@ -1255,20 +1333,37 @@ app.get('/api/place-details', authMiddleware, async (req, res) => {
     }
     res.json(data);
   } catch (e) {
-    console.error('[DETAILS][ERR]', e?.response?.data || e.message);
-    res.status(500).json({ status: 'ERROR', error_message: 'proxy_failed' });
+    console.error(
+      `[DETAILS ${id}][ERR]`,
+      e?.response?.data || e.message
+    );
+    res
+      .status(500)
+      .json({ status: 'ERROR', error_message: 'proxy_failed' });
   }
 });
 
-// --- 3) Directions ---
+// --- 4) Directions ---
 app.get('/api/directions', authMiddleware, async (req, res) => {
+  const id = req.reqId || 'noid';
   try {
     const { origin, destination, mode = 'driving' } = req.query;
+    console.log(
+      `[DIR ${id}] origin="${origin}" dest="${destination}" mode="${mode}"`
+    );
+
     if (!origin || !destination) {
       return res.status(400).json({ status: 'INVALID_REQUEST' });
     }
 
-    const { data } = await axios.get(
+    if (!SERVER_KEY) {
+      console.log(`[DIR ${id}] 500: SERVER_KEY manquante`);
+      return res
+        .status(500)
+        .json({ status: 'ERROR', error_message: 'SERVER_KEY manquante' });
+    }
+
+    const { data } = await axiosInstance.get(
       'https://maps.googleapis.com/maps/api/directions/json',
       {
         params: {
@@ -1278,8 +1373,15 @@ app.get('/api/directions', authMiddleware, async (req, res) => {
           language: 'fr',
           key: SERVER_KEY,
         },
+        headers: { 'X-Req-Id': id },
         timeout: 10000,
       }
+    );
+
+    console.log(
+      `[DIR ${id}] googleStatus=${data.status} routes=${
+        data.routes?.length || 0
+      }`
     );
 
     if (data.status && data.status !== 'OK') {
@@ -1287,18 +1389,37 @@ app.get('/api/directions', authMiddleware, async (req, res) => {
     }
     res.json(data);
   } catch (e) {
-    console.error('[DIRECTIONS][ERR]', e?.response?.data || e.message);
-    res.status(500).json({ status: 'ERROR', error_message: 'proxy_failed' });
+    console.error(
+      `[DIRECTIONS ${id}][ERR]`,
+      e?.response?.data || e.message
+    );
+    res
+      .status(500)
+      .json({ status: 'ERROR', error_message: 'proxy_failed' });
   }
 });
 
 // ======================= Static Map proxy =======================
 app.get('/api/static-map', async (req, res) => {
+  const id = req.reqId || 'noid';
   try {
     const { lat, lng, zoom = 13, size = '160x160' } = req.query;
 
+    console.log(
+      `[STATIC ${id}] lat=${lat} lng=${lng} zoom=${zoom} size=${size}`
+    );
+
     if (!lat || !lng) {
-      return res.status(400).json({ error: 'lat and lng are required' });
+      return res
+        .status(400)
+        .json({ error: 'lat and lng are required' });
+    }
+
+    if (!SERVER_KEY) {
+      console.log(`[STATIC ${id}] 500: SERVER_KEY manquante`);
+      return res
+        .status(500)
+        .json({ error: 'SERVER_KEY manquante' });
     }
 
     const params = {
@@ -1312,9 +1433,10 @@ app.get('/api/static-map', async (req, res) => {
 
     const url = 'https://maps.googleapis.com/maps/api/staticmap';
 
-    const googleResp = await axios.get(url, {
+    const googleResp = await axiosInstance.get(url, {
       params,
       responseType: 'arraybuffer',
+      headers: { 'X-Req-Id': id },
     });
 
     res.set('Content-Type', 'image/png');
@@ -1327,7 +1449,6 @@ app.get('/api/static-map', async (req, res) => {
     return res.status(status).json({ error: data });
   }
 });
-
 
 // ======================= Météo (Météo-Concept via Météo-France) =======================
 const METEO_TOKEN = process.env.METEO_FRANCE_TOKEN;
