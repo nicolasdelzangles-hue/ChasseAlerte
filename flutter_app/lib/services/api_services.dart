@@ -2,59 +2,47 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
+// plus besoin de Platform ni kIsWeb ici
+// import 'package:flutter/foundation.dart' show kIsWeb;
+// import 'dart:io' show Platform;
 
 import '../services/logger.dart';
 import '../models/user.dart';
 import '../models/battue.dart';
+
 class ApiConfig {
-  // ✅ URL DE PROD (Render)
+  // ✅ PROD : ton backend Render
   static const String baseUrl = "https://chassealerte.onrender.com";
 
-  // 💡 Quand tu veux tester en local, tu changes juste CETTE ligne
+  // 🔧 Dev local (si besoin) : tu pourras forcer via setBaseUrl() plus bas
   // static const String baseUrl = "http://localhost:3000";
 }
 
 class ApiServices {
-  static String? _overrideBase;
+  /// URL actuelle utilisée par tout le reste de la classe
+  static String _currentBase = ApiConfig.baseUrl;
 
   // -------------------- Base & Socket --------------------
-  static String get baseUrl => _overrideBase ?? _detectBaseUrl();
-  static String get socketUrl => baseUrl;
+  static String get baseUrl => _currentBase;
+  static String get socketUrl => _currentBase;
 
+  /// Permet de forcer une autre URL en dev (ex: localhost)
+  /// Exemple dans main() en debug :
+  ///   ApiServices.setBaseUrl("http://10.0.2.2:3000");
   static void setBaseUrl(String url) {
-    _overrideBase = url; // ex: 'http://192.168.1.50:3000' en dev local
+    _currentBase = url;
   }
-
-    static String _detectBaseUrl() {
-    // 🌍 Web (GitHub Pages)  => toujours ton backend Render
-    if (kIsWeb) {
-      return ApiConfig.baseUrl;
-    }
-
-    // 📱 Android (app en prod) => backend Render aussi
-    // (si tu veux tester en local, tu peux faire un setBaseUrl dans main() en debug)
-    if (Platform.isAndroid) {
-      return ApiConfig.baseUrl;
-      // pour du full local : return "http://10.0.2.2:3000";
-    }
-
-    // 💻 Windows / macOS / autres
-    return ApiConfig.baseUrl;
-  }
-
 
   // -------------------- Helpers HTTP --------------------
   static Uri _u(String path, [Map<String, dynamic>? q]) =>
-      Uri.parse('$baseUrl$path')
+      Uri.parse('$_currentBase$path')
           .replace(queryParameters: q?.map((k, v) => MapEntry(k, '$v')));
 
   static const _timeout = Duration(seconds: 15);
 
   static Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
-    // 🔐 Nouveau : on lit d’abord accessToken, puis ancien "token" pour compatibilité
+    // 🔐 accessToken d’abord, puis ancien "token" pour compatibilité
     final token = prefs.getString('accessToken') ?? prefs.getString('token');
     return {
       'Content-Type': 'application/json',
@@ -70,14 +58,6 @@ class ApiServices {
   // AUTH
   // ===================================================================
 
-  /// LOGIN
-  /// Le backend renvoie maintenant un JSON du type :
-  /// {
-  ///   "accessToken": "...",
-  ///   "refreshToken": "...",
-  ///   "user": { ... }
-  /// }
-  /// On renvoie ce Map tel quel à AuthProvider.
   static Future<Map<String, dynamic>> login(
       String email, String password) async {
     final r = await http
@@ -99,9 +79,6 @@ class ApiServices {
     _throwHttp('Échec login', r);
   }
 
-  /// REFRESH TOKEN
-  /// Utilisée par AuthProvider.refreshAccessToken(refreshToken)
-  /// Renvoie un Map contenant au minimum { "accessToken": "..." }
   static Future<Map<String, dynamic>> refreshToken(
       String refreshToken) async {
     final r = await http
@@ -129,7 +106,7 @@ class ApiServices {
     required String address,
     required String postalCode,
     required String city,
-    required String permitNumber, // 14 chiffres
+    required String permitNumber,
     required String email,
     required String password,
   }) async {
@@ -178,7 +155,7 @@ class ApiServices {
     required String category,
     required String description,
     String? location,
-    String? incidentAt, // <-- ICI on déclare bien incidentAt
+    String? incidentAt,
     bool isAnonymous = true,
     bool muted = false,
     bool blocked = false,
@@ -189,7 +166,7 @@ class ApiServices {
       'category': category,
       'description': description,
       'location': location,
-      'incident_at': incidentAt, // <-- envoyé à l’API sous ce nom
+      'incident_at': incidentAt,
       'is_anonymous': isAnonymous,
       'muted': muted,
       'blocked': blocked,
@@ -220,7 +197,6 @@ class ApiServices {
     _throwHttp('Échec getProfile', r);
   }
 
-  // ------- NOUVEAU : liste “safe” de tous les utilisateurs -------
   static Future<List<User>> getUsers() async {
     final r = await http
         .get(_u('/api/users'), headers: await _authHeaders())
@@ -289,7 +265,7 @@ class ApiServices {
   }
 
   // ===================================================================
-  // FAVORIS DE BATTUES (HomeScreen)
+  // FAVORIS DE BATTUES
   // ===================================================================
   static Future<List<Battue>> getFavoriteBattues() async {
     final r = await http
@@ -306,7 +282,6 @@ class ApiServices {
     _throwHttp('Échec chargement des favoris', r);
   }
 
-  /// Toggle robuste : tente l’ajout, si 409 on supprime.
   static Future<void> toggleBattueFavorite(int battueId) async {
     final add = await http
         .post(
@@ -316,7 +291,7 @@ class ApiServices {
         )
         .timeout(_timeout);
 
-    if (add.statusCode == 201) return; // ajouté
+    if (add.statusCode == 201) return;
     if (add.statusCode == 409) {
       final del = await http
           .delete(_u('/api/favorites/$battueId'),
@@ -331,9 +306,8 @@ class ApiServices {
   }
 
   // ===================================================================
-  // FAVORIS DE CONVERSATIONS (ChatList)
+  // FAVORIS DE CONVERSATIONS
   // ===================================================================
-
   static Future<List<int>> getConvFavorites() async {
     final r = await http
         .get(_u('/api/conv-favorites'), headers: await _authHeaders())
@@ -384,9 +358,6 @@ class ApiServices {
     _throwHttp('Retrait favori impossible', r);
   }
 
-  // -------------------------------------------------------
-  // Profil (PUT) - déjà utilisé par EditProfileScreen
-  // -------------------------------------------------------
   static Future<User> updateProfile(Map<String, dynamic> data) async {
     final r = await http
         .put(
@@ -413,21 +384,21 @@ class ApiServices {
         )
         .timeout(_timeout);
 
-    if (r.statusCode == 201) return; // ajouté
+    if (r.statusCode == 201) return;
     if (r.statusCode == 409) {
-      await removeConvFavorite(conversationId); // déjà favori -> on retire
+      await removeConvFavorite(conversationId);
       return;
     }
     _throwHttp('Toggle favori impossible', r);
   }
 
   // ===================================================================
-  // GÉOCODAGE (PROXY SERVEUR) — AJOUT SANS CASSER
+  // GÉOCODAGE / PLACES
   // ===================================================================
   static Future<Map<String, dynamic>> geocodeAddress(String address) async {
     logI('GEO', 'submit address="$address"');
     try {
-      final uri = _u('/api/geocode', {'q': address}); // 'q' côté backend
+      final uri = _u('/api/geocode', {'q': address});
       logI('HTTP', 'GET $uri');
       final r = await http.get(uri).timeout(_timeout);
       logI('HTTP', 'STATUS ${r.statusCode} for $uri');
@@ -452,58 +423,62 @@ class ApiServices {
   }
 
   static Future<List<dynamic>> placesAutocomplete(String input) async {
-  logI('PLACES', 'input="$input"');
+    logI('PLACES', 'input="$input"');
 
-  final uri = _u('/api/places', {'input': input});
-  logI('HTTP', 'GET $uri');
+    final uri = _u('/api/places', {'input': input});
+    logI('HTTP', 'GET $uri');
 
-  // 🔐 IMPORTANT : route protégée par authMiddleware → on envoie le token
-  final headers = await _authHeaders();
+    // route protégée par authMiddleware
+    final headers = await _authHeaders();
 
-  final r = await http.get(uri, headers: headers).timeout(_timeout);
-  logI('HTTP', 'STATUS ${r.statusCode} for $uri');
+    final r = await http.get(uri, headers: headers).timeout(_timeout);
+    logI('HTTP', 'STATUS ${r.statusCode} for $uri');
 
-  final data = jsonDecode(r.body);
-  logI('PLACES',
-      'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}');
+    final data = jsonDecode(r.body);
+    logI(
+      'PLACES',
+      'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}',
+    );
 
-  if (r.statusCode != 200) {
-    throw Exception('Places HTTP ${r.statusCode}');
+    if (r.statusCode != 200) {
+      throw Exception('Places HTTP ${r.statusCode}');
+    }
+
+    return (data['predictions'] as List?) ?? [];
   }
-
-  return (data['predictions'] as List?) ?? [];
-}
-
 
   static Future<Map<String, dynamic>> placeDetails(String placeId) async {
-  logI('DETAILS', 'place_id=$placeId');
+    logI('DETAILS', 'place_id=$placeId');
 
-  final uri = _u('/api/place-details', {'place_id': placeId});
-  logI('HTTP', 'GET $uri');
+    final uri = _u('/api/place-details', {'place_id': placeId});
+    logI('HTTP', 'GET $uri');
 
-  // 🔐 idem : protégé par authMiddleware
-  final headers = await _authHeaders();
+    final headers = await _authHeaders();
 
-  final r = await http.get(uri, headers: headers).timeout(_timeout);
-  logI('HTTP', 'STATUS ${r.statusCode} for $uri');
+    final r = await http.get(uri, headers: headers).timeout(_timeout);
+    logI('HTTP', 'STATUS ${r.statusCode} for $uri');
 
-  final data = jsonDecode(r.body);
-  logI('DETAILS',
-      'status=${data['status']} hasResult=${data['result'] != null}');
+    final data = jsonDecode(r.body);
+    logI(
+      'DETAILS',
+      'status=${data['status']} hasResult=${data['result'] != null}',
+    );
 
-  if (r.statusCode != 200) {
-    throw Exception('Details HTTP ${r.statusCode}');
+    if (r.statusCode != 200) {
+      throw Exception('Details HTTP ${r.statusCode}');
+    }
+
+    return data;
   }
 
-  return data;
-}
-
-
+  // ===================================================================
+  // STATS BATTUES
+  // ===================================================================
   static Future<Map<String, dynamic>> getBattueSeries({
     required int battueId,
-    String granularity = 'day', // 'day' | 'month'
+    String granularity = 'day',
   }) async {
-    final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats/series')
+    final uri = Uri.parse('$_currentBase/api/battues/$battueId/stats/series')
         .replace(queryParameters: {'granularity': granularity});
 
     final headers = await authHeaders();
@@ -519,12 +494,15 @@ class ApiServices {
 
   static Future<void> saveBattueStat(
       int battueId, Map<String, dynamic> body) async {
-    final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats');
+    final uri =
+        Uri.parse('$_currentBase/api/battues/$battueId/stats');
     final headers = await authHeaders();
     final r = await http
-        .post(uri,
-            headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode(body))
+        .post(
+          uri,
+          headers: {...headers, 'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        )
         .timeout(_timeout);
     if (r.statusCode != 200) {
       throw 'HTTP ${r.statusCode} ${r.body}';
@@ -532,8 +510,7 @@ class ApiServices {
   }
 
   static Future<List<Map<String, dynamic>>> getReports() async {
-    final res =
-        await http.get(_u('/api/reports')).timeout(_timeout);
+    final res = await http.get(_u('/api/reports')).timeout(_timeout);
     if (res.statusCode == 200) {
       final List data = jsonDecode(res.body);
       return List<Map<String, dynamic>>.from(data);
@@ -542,7 +519,6 @@ class ApiServices {
     }
   }
 
-  // Helper debug (optionnel) - je corrige l’URL pour coller à ton backend
   static Future<User> getProfile2() async {
     final response =
         await http.get(_u('/api/users/me'), headers: await _authHeaders());
