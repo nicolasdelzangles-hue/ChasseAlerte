@@ -297,7 +297,7 @@ class ApiServices {
       final list = jsonDecode(r.body) as List;
       return list
           .map((e) => Battue.fromJson(e as Map<String, dynamic>))
-          .toList();
+          .toList(); 
     }
     if (r.statusCode == 401) throw Exception('Session expirée');
     _throwHttp('Échec chargement des favoris', r);
