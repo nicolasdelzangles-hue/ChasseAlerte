@@ -8,10 +8,10 @@ import 'dart:io' show Platform;
 import '../services/logger.dart';
 import '../models/user.dart';
 import '../models/battue.dart';
-
 class ApiConfig {
-  static const String baseUrl = "https://chassealerte.onrender.com";
-  // static const String baseUrl = "http://localhost:3000";
+  //static const String baseUrl = "https://chassealerte.onrender.com";
+  static const String baseUrl = "http://localhost:3000";
+
 }
 
 class ApiServices {
@@ -26,19 +26,21 @@ class ApiServices {
   }
 
   static String _detectBaseUrl() {
-    // 🌍 Tout ce qui tourne dans un navigateur (Chrome, GitHub Pages, etc.)
-    if (kIsWeb) {
-      return 'https://chassealerte.onrender.com';
-    }
-
-    // 📱 Android (émulateur ou device)
-    if (Platform.isAndroid) {
-      return 'https://chassealerte.onrender.com';
-    }
-
-    // 💻 Autres (Windows, macOS en local)
-    return ApiConfig.baseUrl;
+  // 🌍 Tout ce qui tourne dans un navigateur (Chrome, GitHub Pages, etc.)
+  if (kIsWeb) {
+    // ⬇⬇⬇ mets ici TON URL Render ⬇⬇⬇
+    return 'http://localhost:3000';
   }
+
+  // 📱 Android (émulateur ou device)
+  if (Platform.isAndroid) {
+    return 'http://10.0.2.2:3000'; // ton backend local si tu le lances en dev
+  }
+
+  // 💻 Autres (Windows, macOS en local)
+  return 'ApiConfig.baseUrl';
+}
+
 
   // -------------------- Helpers HTTP --------------------
   static Uri _u(String path, [Map<String, dynamic>? q]) =>
@@ -65,6 +67,14 @@ class ApiServices {
   // AUTH
   // ===================================================================
 
+  /// LOGIN
+  /// Le backend renvoie maintenant un JSON du type :
+  /// {
+  ///   "accessToken": "...",
+  ///   "refreshToken": "...",
+  ///   "user": { ... }
+  /// }
+  /// On renvoie ce Map tel quel à AuthProvider.
   static Future<Map<String, dynamic>> login(
       String email, String password) async {
     final r = await http
@@ -86,6 +96,9 @@ class ApiServices {
     _throwHttp('Échec login', r);
   }
 
+  /// REFRESH TOKEN
+  /// Utilisée par AuthProvider.refreshAccessToken(refreshToken)
+  /// Renvoie un Map contenant au minimum { "accessToken": "..." }
   static Future<Map<String, dynamic>> refreshToken(
       String refreshToken) async {
     final r = await http
@@ -113,7 +126,7 @@ class ApiServices {
     required String address,
     required String postalCode,
     required String city,
-    required String permitNumber,
+    required String permitNumber, // 14 chiffres
     required String email,
     required String password,
   }) async {
@@ -162,7 +175,7 @@ class ApiServices {
     required String category,
     required String description,
     String? location,
-    String? incidentAt,
+    String? incidentAt, // <-- ICI on déclare bien incidentAt
     bool isAnonymous = true,
     bool muted = false,
     bool blocked = false,
@@ -173,7 +186,7 @@ class ApiServices {
       'category': category,
       'description': description,
       'location': location,
-      'incident_at': incidentAt,
+      'incident_at': incidentAt, // <-- envoyé à l’API sous ce nom
       'is_anonymous': isAnonymous,
       'muted': muted,
       'blocked': blocked,
@@ -204,6 +217,7 @@ class ApiServices {
     _throwHttp('Échec getProfile', r);
   }
 
+  // ------- NOUVEAU : liste “safe” de tous les utilisateurs -------
   static Future<List<User>> getUsers() async {
     final r = await http
         .get(_u('/api/users'), headers: await _authHeaders())
@@ -272,7 +286,7 @@ class ApiServices {
   }
 
   // ===================================================================
-  // FAVORIS DE BATTUES
+  // FAVORIS DE BATTUES (HomeScreen)
   // ===================================================================
   static Future<List<Battue>> getFavoriteBattues() async {
     final r = await http
@@ -289,6 +303,7 @@ class ApiServices {
     _throwHttp('Échec chargement des favoris', r);
   }
 
+  /// Toggle robuste : tente l’ajout, si 409 on supprime.
   static Future<void> toggleBattueFavorite(int battueId) async {
     final add = await http
         .post(
@@ -313,8 +328,9 @@ class ApiServices {
   }
 
   // ===================================================================
-  // FAVORIS DE CONVERSATIONS
+  // FAVORIS DE CONVERSATIONS (ChatList)
   // ===================================================================
+
   static Future<List<int>> getConvFavorites() async {
     final r = await http
         .get(_u('/api/conv-favorites'), headers: await _authHeaders())
@@ -341,7 +357,7 @@ class ApiServices {
         .where((id) => id > 0)
         .toList();
   }
- 
+
   static Future<void> addConvFavorite(int conversationId) async {
     final r = await http
         .post(
@@ -365,6 +381,9 @@ class ApiServices {
     _throwHttp('Retrait favori impossible', r);
   }
 
+  // -------------------------------------------------------
+  // Profil (PUT) - déjà utilisé par EditProfileScreen
+  // -------------------------------------------------------
   static Future<User> updateProfile(Map<String, dynamic> data) async {
     final r = await http
         .put(
@@ -393,19 +412,19 @@ class ApiServices {
 
     if (r.statusCode == 201) return; // ajouté
     if (r.statusCode == 409) {
-      await removeConvFavorite(conversationId);
+      await removeConvFavorite(conversationId); // déjà favori -> on retire
       return;
     }
     _throwHttp('Toggle favori impossible', r);
   }
 
   // ===================================================================
-  // GÉOCODAGE / PLACES / DÉTAILS
+  // GÉOCODAGE (PROXY SERVEUR) — AJOUT SANS CASSER
   // ===================================================================
   static Future<Map<String, dynamic>> geocodeAddress(String address) async {
     logI('GEO', 'submit address="$address"');
     try {
-      final uri = _u('/api/geocode', {'q': address});
+      final uri = _u('/api/geocode', {'q': address}); // 'q' côté backend
       logI('HTTP', 'GET $uri');
       final r = await http.get(uri).timeout(_timeout);
       logI('HTTP', 'STATUS ${r.statusCode} for $uri');
@@ -414,14 +433,13 @@ class ApiServices {
       logI('HTTP', 'BODY ${r.body.length} chars');
 
       if (r.statusCode == 200 && data is Map<String, dynamic>) {
-        logI(
-            'GEO',
-            'ok lat=${data['lat']} lon=${data['lon']} '
-            'name="${data['displayName']}"');
+        logI('GEO',
+            'ok lat=${data['lat']} lon=${data['lon']} name="${data['displayName']}"');
         return data;
       }
-      final msg =
-          (data is Map && (data['error'] ?? data['message'])) ?? 'Échec géocodage';
+      final msg = (data is Map &&
+                  (data['error'] != null ? data['error'] : data['message'])) ??
+          'Échec géocodage';
       logI('GEO', 'error: $msg');
       throw Exception(msg);
     } catch (e) {
@@ -434,18 +452,12 @@ class ApiServices {
     logI('PLACES', 'input="$input"');
     final uri = _u('/api/places', {'input': input});
     logI('HTTP', 'GET $uri');
-    final r =
-        await http.get(uri, headers: await _authHeaders()).timeout(_timeout);
+    final r = await http.get(uri).timeout(_timeout);
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
     final data = jsonDecode(r.body);
-    logI(
-      'PLACES',
-      'status=${data['status']} '
-      'count=${(data['predictions'] as List?)?.length ?? 0}',
-    );
-    if (r.statusCode != 200) {
-      throw Exception('Places HTTP ${r.statusCode}');
-    }
+    logI('PLACES',
+        'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}');
+    if (r.statusCode != 200) throw Exception('Places HTTP ${r.statusCode}');
     return (data['predictions'] as List?) ?? [];
   }
 
@@ -453,29 +465,22 @@ class ApiServices {
     logI('DETAILS', 'place_id=$placeId');
     final uri = _u('/api/place-details', {'place_id': placeId});
     logI('HTTP', 'GET $uri');
-    final r =
-        await http.get(uri, headers: await _authHeaders()).timeout(_timeout);
+    final r = await http.get(uri).timeout(_timeout);
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
     final data = jsonDecode(r.body);
-    logI(
-      'DETAILS',
-      'status=${data['status']} hasResult=${data['result'] != null}',
-    );
-    if (r.statusCode != 200) {
-      throw Exception('Details HTTP ${r.statusCode}');
-    }
+    logI('DETAILS',
+        'status=${data['status']} hasResult=${data['result'] != null}');
+    if (r.statusCode != 200) throw Exception('Details HTTP ${r.statusCode}');
     return data;
   }
 
-  // ===================================================================
-  // STATISTIQUES BATTUES
-  // ===================================================================
   static Future<Map<String, dynamic>> getBattueSeries({
     required int battueId,
-    String granularity = 'day',
+    String granularity = 'day', // 'day' | 'month'
   }) async {
-    final uri =
-        _u('/api/battues/$battueId/stats/series', {'granularity': granularity});
+    final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats/series')
+        .replace(queryParameters: {'granularity': granularity});
+
     final headers = await authHeaders();
     final r = await http.get(uri, headers: headers).timeout(_timeout);
 
@@ -489,52 +494,21 @@ class ApiServices {
 
   static Future<void> saveBattueStat(
       int battueId, Map<String, dynamic> body) async {
-    final uri = _u('/api/battues/$battueId/stats');
+    final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats');
     final headers = await authHeaders();
     final r = await http
-        .post(
-          uri,
-          headers: {...headers, 'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        )
+        .post(uri,
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: jsonEncode(body))
         .timeout(_timeout);
     if (r.statusCode != 200) {
       throw 'HTTP ${r.statusCode} ${r.body}';
     }
   }
 
-  // ===================================================================
-  // MÉTÉO (backend: /api/meteo)
-  // ===================================================================
-  static Future<Map<String, dynamic>> getWeather({
-    required double lat,
-    required double lon,
-  }) async {
-    final uri = _u('/api/meteo', {
-      'lat': lat,
-      'lon': lon,
-    });
-
-    logI('METEO', 'GET $uri');
-    final r = await http.get(uri).timeout(_timeout);
-    logI('METEO', 'STATUS ${r.statusCode}');
-
-    if (r.statusCode != 200) {
-      throw Exception('Météo HTTP ${r.statusCode}: ${r.body}');
-    }
-
-    final data = jsonDecode(r.body);
-    if (data is! Map<String, dynamic>) {
-      throw Exception('Réponse météo invalide');
-    }
-    return data;
-  }
-
-  // ===================================================================
-  // REPORTS
-  // ===================================================================
   static Future<List<Map<String, dynamic>>> getReports() async {
-    final res = await http.get(_u('/api/reports')).timeout(_timeout);
+    final res =
+        await http.get(_u('/api/reports')).timeout(_timeout);
     if (res.statusCode == 200) {
       final List data = jsonDecode(res.body);
       return List<Map<String, dynamic>>.from(data);
@@ -543,7 +517,7 @@ class ApiServices {
     }
   }
 
-  // Helper debug
+  // Helper debug (optionnel) - je corrige l’URL pour coller à ton backend
   static Future<User> getProfile2() async {
     final response =
         await http.get(_u('/api/users/me'), headers: await _authHeaders());
