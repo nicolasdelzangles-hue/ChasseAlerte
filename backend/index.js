@@ -42,15 +42,16 @@ const REFRESH_SECRET = process.env.REFRESH_SECRET || SECRET_KEY;
 
 // MySQL pool
 const db = mysql.createPool({
-  host: process.env.DB_HOST ,
-  user: process.env.DB_USER ,
-  password: process.env.DB_PORT || '3306',
-  database: process.env.DB_NAME ,
-  password: process.env.DB_PASSWORD, 
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 3306,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
 });
+
 // ====== LOGGING UTILS ======
 const startHr = () => process.hrtime.bigint();
 const durMs = (t0) => Number((process.hrtime.bigint() - t0) / 1000000n);
@@ -1656,7 +1657,8 @@ function toBundle(lat, lon, nextHoursData, dailyData, cityName = '') {
 /* ==================== Routes ==================== */
 
 // -------- Route météo normalisée (pour l’app) --------
-app.get('/api/meteo', async (req, res) => {
+app.get(['/api/meteo', '/meteo'], async (req, res) => {
+
   try {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
@@ -1695,7 +1697,8 @@ app.get('/api/meteo', async (req, res) => {
 });
 
 // -------- Route brute (debug/validation) --------
-app.get('/api/meteo/raw', async (req, res) => {
+app.get(['/api/meteo/raw', '/meteo/raw'], async (req, res) => {
+
   try {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
