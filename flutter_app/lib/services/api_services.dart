@@ -9,9 +9,11 @@ import '../services/logger.dart';
 import '../models/user.dart';
 import '../models/battue.dart';
 class ApiConfig {
-  //static const String baseUrl = "https://chassealerte.onrender.com";
-  static const String baseUrl = "http://localhost:3000";
+  // ✅ URL DE PROD (Render)
+  static const String baseUrl = "https://chassealerte.onrender.com";
 
+  // 💡 Quand tu veux tester en local, tu changes juste CETTE ligne
+  // static const String baseUrl = "http://localhost:3000";
 }
 
 class ApiServices {
@@ -22,24 +24,25 @@ class ApiServices {
   static String get socketUrl => baseUrl;
 
   static void setBaseUrl(String url) {
-    _overrideBase = url; // ex: 'http://192.168.1.50:3000'
+    _overrideBase = url; // ex: 'http://192.168.1.50:3000' en dev local
   }
 
-  static String _detectBaseUrl() {
-  // 🌍 Tout ce qui tourne dans un navigateur (Chrome, GitHub Pages, etc.)
-  if (kIsWeb) {
-    // ⬇⬇⬇ mets ici TON URL Render ⬇⬇⬇
-    return 'http://localhost:3000';
-  }
+    static String _detectBaseUrl() {
+    // 🌍 Web (GitHub Pages)  => toujours ton backend Render
+    if (kIsWeb) {
+      return ApiConfig.baseUrl;
+    }
 
-  // 📱 Android (émulateur ou device)
-  if (Platform.isAndroid) {
-    return 'http://10.0.2.2:3000'; // ton backend local si tu le lances en dev
-  }
+    // 📱 Android (app en prod) => backend Render aussi
+    // (si tu veux tester en local, tu peux faire un setBaseUrl dans main() en debug)
+    if (Platform.isAndroid) {
+      return ApiConfig.baseUrl;
+      // pour du full local : return "http://10.0.2.2:3000";
+    }
 
-  // 💻 Autres (Windows, macOS en local)
-  return 'ApiConfig.baseUrl';
-}
+    // 💻 Windows / macOS / autres
+    return ApiConfig.baseUrl;
+  }
 
 
   // -------------------- Helpers HTTP --------------------
@@ -449,30 +452,52 @@ class ApiServices {
   }
 
   static Future<List<dynamic>> placesAutocomplete(String input) async {
-    logI('PLACES', 'input="$input"');
-    final uri = _u('/api/places', {'input': input});
-    logI('HTTP', 'GET $uri');
-    final r = await http.get(uri).timeout(_timeout);
-    logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-    final data = jsonDecode(r.body);
-    logI('PLACES',
-        'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}');
-    if (r.statusCode != 200) throw Exception('Places HTTP ${r.statusCode}');
-    return (data['predictions'] as List?) ?? [];
+  logI('PLACES', 'input="$input"');
+
+  final uri = _u('/api/places', {'input': input});
+  logI('HTTP', 'GET $uri');
+
+  // 🔐 IMPORTANT : route protégée par authMiddleware → on envoie le token
+  final headers = await _authHeaders();
+
+  final r = await http.get(uri, headers: headers).timeout(_timeout);
+  logI('HTTP', 'STATUS ${r.statusCode} for $uri');
+
+  final data = jsonDecode(r.body);
+  logI('PLACES',
+      'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}');
+
+  if (r.statusCode != 200) {
+    throw Exception('Places HTTP ${r.statusCode}');
   }
 
+  return (data['predictions'] as List?) ?? [];
+}
+
+
   static Future<Map<String, dynamic>> placeDetails(String placeId) async {
-    logI('DETAILS', 'place_id=$placeId');
-    final uri = _u('/api/place-details', {'place_id': placeId});
-    logI('HTTP', 'GET $uri');
-    final r = await http.get(uri).timeout(_timeout);
-    logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-    final data = jsonDecode(r.body);
-    logI('DETAILS',
-        'status=${data['status']} hasResult=${data['result'] != null}');
-    if (r.statusCode != 200) throw Exception('Details HTTP ${r.statusCode}');
-    return data;
+  logI('DETAILS', 'place_id=$placeId');
+
+  final uri = _u('/api/place-details', {'place_id': placeId});
+  logI('HTTP', 'GET $uri');
+
+  // 🔐 idem : protégé par authMiddleware
+  final headers = await _authHeaders();
+
+  final r = await http.get(uri, headers: headers).timeout(_timeout);
+  logI('HTTP', 'STATUS ${r.statusCode} for $uri');
+
+  final data = jsonDecode(r.body);
+  logI('DETAILS',
+      'status=${data['status']} hasResult=${data['result'] != null}');
+
+  if (r.statusCode != 200) {
+    throw Exception('Details HTTP ${r.statusCode}');
   }
+
+  return data;
+}
+
 
   static Future<Map<String, dynamic>> getBattueSeries({
     required int battueId,
