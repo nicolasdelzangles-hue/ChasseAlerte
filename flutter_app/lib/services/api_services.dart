@@ -422,54 +422,57 @@ class ApiServices {
     }
   }
 
-  static Future<List<dynamic>> placesAutocomplete(String input) async {
+   static Future<List<dynamic>> placesAutocomplete(String input) async {
     logI('PLACES', 'input="$input"');
 
-    final uri = _u('/api/places', {'input': input});
-    logI('HTTP', 'GET $uri');
+    // 🔥 URL ABSOLUE → on bypass complètement baseUrl / _u()
+    final uri = Uri.parse(
+      'https://chassealerte.onrender.com/api/places',
+    ).replace(queryParameters: {'input': input});
 
-    // route protégée par authMiddleware
+    // route protégée → on envoie le token
     final headers = await _authHeaders();
 
+    logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-
-    final data = jsonDecode(r.body);
-    logI(
-      'PLACES',
-      'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}',
-    );
+    logI('HTTP', 'BODY = ${r.body}');
 
     if (r.statusCode != 200) {
       throw Exception('Places HTTP ${r.statusCode}');
     }
 
+    final data = jsonDecode(r.body);
+    logI('PLACES',
+        'status=${data['status']} count=${(data['predictions'] as List?)?.length ?? 0}');
     return (data['predictions'] as List?) ?? [];
   }
 
   static Future<Map<String, dynamic>> placeDetails(String placeId) async {
     logI('DETAILS', 'place_id=$placeId');
 
-    final uri = _u('/api/place-details', {'place_id': placeId});
-    logI('HTTP', 'GET $uri');
+    // 🔥 URL ABSOLUE ici aussi
+    final uri = Uri.parse(
+      'https://chassealerte.onrender.com/api/place-details',
+    ).replace(queryParameters: {'place_id': placeId});
 
     final headers = await _authHeaders();
 
+    logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-
-    final data = jsonDecode(r.body);
-    logI(
-      'DETAILS',
-      'status=${data['status']} hasResult=${data['result'] != null}',
-    );
+    logI('HTTP', 'BODY = ${r.body}');
 
     if (r.statusCode != 200) {
       throw Exception('Details HTTP ${r.statusCode}');
     }
 
+    final data = jsonDecode(r.body);
+    logI('DETAILS',
+        'status=${data['status']} hasResult=${data['result'] != null}');
     return data;
   }
+
 
   // ===================================================================
   // STATS BATTUES
