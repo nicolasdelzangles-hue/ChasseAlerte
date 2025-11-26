@@ -3,46 +3,55 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 // plus besoin de Platform ni kIsWeb ici
-// import 'package:flutter/foundation.dart' show kIsWeb;
-// import 'dart:io' show Platform;
+ import 'package:flutter/foundation.dart' show kIsWeb;
+ import 'dart:io' show Platform;
 
 import '../services/logger.dart';
 import '../models/user.dart';
 import '../models/battue.dart';
 
 class ApiConfig {
-  // ✅ PROD : ton backend Render
   static const String baseUrl = "https://chassealerte.onrender.com";
+  //static const String baseUrl = "http://localhost:3000";
 
-  // 🔧 Dev local (si besoin) : tu pourras forcer via setBaseUrl() plus bas
-  // static const String baseUrl = "http://localhost:3000";
 }
 
 class ApiServices {
-  /// URL actuelle utilisée par tout le reste de la classe
-  static String _currentBase = ApiConfig.baseUrl;
+  static String? _overrideBase;
 
   // -------------------- Base & Socket --------------------
-  static String get baseUrl => _currentBase;
-  static String get socketUrl => _currentBase;
+  static String get baseUrl => _overrideBase ?? _detectBaseUrl();
+  static String get socketUrl => baseUrl;
 
-  /// Permet de forcer une autre URL en dev (ex: localhost)
-  /// Exemple dans main() en debug :
-  ///   ApiServices.setBaseUrl("http://10.0.2.2:3000");
   static void setBaseUrl(String url) {
-    _currentBase = url;
+    _overrideBase = url; // ex: 'http://192.168.1.50:3000'
   }
 
+  static String _detectBaseUrl() {
+  // 🌍 Tout ce qui tourne dans un navigateur (Chrome, GitHub Pages, etc.)
+ // 🌍 Web (GitHub Pages)  → toujours Render
+  if (kIsWeb) {
+    return ApiConfig.baseUrl;      // OK !
+  }
+
+  // 📱 Android / iOS → Render aussi
+  if (Platform.isAndroid || Platform.isIOS) {
+    return ApiConfig.baseUrl;      // OK !
+  }
+
+  // 💻 Desktop
+  return ApiConfig.baseUrl;        // OK !
+}
   // -------------------- Helpers HTTP --------------------
-  static Uri _u(String path, [Map<String, dynamic>? q]) =>
-      Uri.parse('$_currentBase$path')
+   static Uri _u(String path, [Map<String, dynamic>? q]) =>
+      Uri.parse('$baseUrl$path')
           .replace(queryParameters: q?.map((k, v) => MapEntry(k, '$v')));
 
   static const _timeout = Duration(seconds: 15);
 
   static Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
-    // 🔐 accessToken d’abord, puis ancien "token" pour compatibilité
+    // 🔐 Nouveau : on lit d’abord accessToken, puis ancien "token" pour compatibilité
     final token = prefs.getString('accessToken') ?? prefs.getString('token');
     return {
       'Content-Type': 'application/json',
@@ -477,11 +486,11 @@ class ApiServices {
   // ===================================================================
   // STATS BATTUES
   // ===================================================================
-  static Future<Map<String, dynamic>> getBattueSeries({
+   static Future<Map<String, dynamic>> getBattueSeries({
     required int battueId,
-    String granularity = 'day',
+    String granularity = 'day', // 'day' | 'month'
   }) async {
-    final uri = Uri.parse('$_currentBase/api/battues/$battueId/stats/series')
+    final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats/series')
         .replace(queryParameters: {'granularity': granularity});
 
     final headers = await authHeaders();
@@ -495,17 +504,14 @@ class ApiServices {
 
   static Future<Map<String, String>> authHeaders() => _authHeaders();
 
-  static Future<void> saveBattueStat(
+ static Future<void> saveBattueStat(
       int battueId, Map<String, dynamic> body) async {
-    final uri =
-        Uri.parse('$_currentBase/api/battues/$battueId/stats');
+    final uri = Uri.parse('$baseUrl/api/battues/$battueId/stats');
     final headers = await authHeaders();
     final r = await http
-        .post(
-          uri,
-          headers: {...headers, 'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        )
+        .post(uri,
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: jsonEncode(body))
         .timeout(_timeout);
     if (r.statusCode != 200) {
       throw 'HTTP ${r.statusCode} ${r.body}';
