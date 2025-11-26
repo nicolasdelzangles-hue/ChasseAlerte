@@ -9,7 +9,7 @@ class ChatService {
   /// Exemple : "https://chassealerte.onrender.com/api"
   /// (AVEC /api à la fin, comme ApiServices.baseUrl)
   final String baseUrl;
-  final String token;
+  final String token; 
 
   sio.Socket? _socket;
 
