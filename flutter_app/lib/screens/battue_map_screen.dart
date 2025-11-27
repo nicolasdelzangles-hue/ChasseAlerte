@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chassealerte/services/api_services.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
@@ -18,8 +19,7 @@ class BattueMapScreen extends StatefulWidget {
 
 class _BattueMapScreenState extends State<BattueMapScreen> {
   // ====== CONFIG ======
-  static const String _apiBase = 'ApiConfig.baseUrl';
-
+static const String _apiBase = '${ApiConfig.baseUrl}/api';
   /// Limitation du viewport (France métropolitaine)
   static final LatLngBounds _frBounds = LatLngBounds(
     southwest: const LatLng(41.0, -5.5),

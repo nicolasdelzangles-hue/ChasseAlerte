@@ -51959,7 +51959,7 @@ if(!B.c.bB(c,"+"))c="+33"+c
 e=t.N
 l=A.P(["first_name",g,"last_name",f,"phone",c,"address",B.c.aR(m.w.a.a),"postal_code",B.c.aR(m.x.a.a),"city",B.c.aR(m.y.a.a),"permit_number",B.c.aR(m.z.a.a),"email",B.c.aR(m.Q.a.a),"password",m.as.a.a],e,e)
 p=4
-g=A.d5("ApiConfig.baseUrl/api/register")
+g=A.d5("https://chassealerte.onrender.com/api/register")
 e=A.P(["Content-Type","application/json"],e,e)
 s=7
 return A.q(A.tG(g,B.V.jf(l,null),e),$async$oS)
@@ -52977,7 +52977,7 @@ this.e.sC(0,r.charCodeAt(0)==0?r:r)},
 aq(){var s,r=this
 r.aB()
 r.dL("INIT","BattueMapScreen")
-s=A.bip(A.bgQ("ApiConfig.baseUrl",B.c6,B.c6,new A.aHa()))
+s=A.bip(A.bgQ("https://chassealerte.onrender.com/api",B.c6,B.c6,new A.aHa()))
 r.x!==$&&A.bh()
 r.x=s
 s=s.a5g$
@@ -53618,8 +53618,8 @@ s=7
 return A.q(l.BZ(),$async$xh)
 case 7:k=b
 if(k==null){i=A.c1("Token manquant, reconnecte-toi.")
-throw A.e(i)}m.f=new A.ago("ApiConfig.baseUrl/api",k)
-m.r=new A.ahc("ApiConfig.baseUrl/api",k)
+throw A.e(i)}m.f=new A.ago("https://chassealerte.onrender.com/api",k)
+m.r=new A.ahc("https://chassealerte.onrender.com/api",k)
 s=8
 return A.q(A.mA(A.c([m.qK(),m.xU()],t.mo),t.H),$async$xh)
 case 8:n.push(6)
@@ -53885,7 +53885,7 @@ $S:399}
 A.aIu.prototype={
 $1(a){var s=this
 s.a.f.toString
-return new A.u8(s.b,"ApiConfig.baseUrl",s.c,s.d,null)},
+return new A.u8(s.b,"https://chassealerte.onrender.com",s.c,s.d,null)},
 $S:405}
 A.aJ5.prototype={
 $0(){var s=this.a.x,r=this.b

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:chassealerte/services/api_services.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -23,7 +24,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
 
   // 👉 Adapte l'URL si besoin (3000/3001, IP locale, etc.)
-  static const String _registerUrl = 'ApiConfig.baseUrl/api/register';
+  static const String _registerUrl = '${ApiConfig.baseUrl}/api/register';
 
   // Normalisation simple FR
   String normalizePhone(String raw) {

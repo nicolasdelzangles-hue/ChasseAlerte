@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'package:chassealerte/services/api_services.dart';
 import 'package:http/http.dart' as http;
 
 class FavoriteService {
-  static const String baseUrl = 'ApiConfig.baseUrl'; // adapte si besoin
+  static const String baseUrl = '${ApiConfig.baseUrl}/api'; // adapte si besoin
 
   static Future<void> toggleFavorite(int userId, int battueId) async {
     final url = Uri.parse('$baseUrl/api/favorites');

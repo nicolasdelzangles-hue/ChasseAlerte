@@ -1,5 +1,6 @@
 // lib/screens/chat_list_screen.dart
 import 'dart:async';
+import 'package:chassealerte/services/api_services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,8 +18,9 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   // Adapte à ton réseau si besoin
-  static const String _apiBase = 'ApiConfig.baseUrl/api';
-  static const String _socketUrl = 'ApiConfig.baseUrl';
+  static const String _apiBase = '${ApiConfig.baseUrl}/api';
+
+  static const String _socketUrl = ApiConfig.baseUrl;
 
   final _phoneCtrl = TextEditingController();
   final _phoneFocus = FocusNode();
