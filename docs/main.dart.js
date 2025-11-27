@@ -53256,7 +53256,7 @@ a7=A.P(["origin",A.l(a7.a)+","+A.l(a7.b),"destination",A.l(b8.a)+","+A.l(b8.b),"
 a9=A.blu()
 a9.a="GET"
 s=8
-return A.q(a6.RN(0,"api/directions",null,null,null,a9,a7,a8),$async$tV)
+return A.q(a6.RN(0,"/api/directions",null,null,null,a9,a7,a8),$async$tV)
 case 8:l=c0
 a6=l.a
 a6=a6==null?null:J.at(a6,"status")

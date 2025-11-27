@@ -317,7 +317,7 @@ static const String _apiBase = ApiConfig.baseUrl;
     if (!await _ensureAuth()) return;
 
     try {
-      final r = await _dio.get('api/directions', queryParameters: {
+      final r = await _dio.get('/api/directions', queryParameters: {
         'origin': '${_myPos!.latitude},${_myPos!.longitude}',
         'destination': '${dest.latitude},${dest.longitude}',
         'mode': 'driving',
