@@ -439,90 +439,61 @@ class ApiServices {
     }
   }
 
-  static Future<List<dynamic>> placesAutocomplete(String input) async {
-    logI('PLACES', 'input="$input" base=$_currentBase');
+    static Future<List<dynamic>> placesAutocomplete(String input) async {
+    logI('PLACES', 'input="$input"');
 
-    // URL ABSOLUE → on bypass complètement _u()
-    final uri = Uri.parse(
-      'https://chassealerte.onrender.com/api/places',
-    ).replace(queryParameters: {'input': input});
+    // ✅ ICI : on utilise bien baseUrl complet, pas "ApiConfig.baseUrl"
+    final uri = Uri.parse('$baseUrl/api/places')
+        .replace(queryParameters: {'input': input});
 
+    // route protégée → on envoie le token
     final headers = await _authHeaders();
-    logI('PLACES', 'headers.Authorization=${headers['Authorization']}');
 
     logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
-
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-    final snippet =
-        r.body.length > 300 ? r.body.substring(0, 300) : r.body;
-    logI('HTTP', 'BODY snippet="$snippet"');
+    logI('HTTP', 'BODY = ${r.body}');
 
     if (r.statusCode != 200) {
       throw Exception('Places HTTP ${r.statusCode}');
     }
 
-    dynamic data;
-    try {
-      data = jsonDecode(r.body);
-      logI('PLACES', 'jsonDecode ok, type=${data.runtimeType}');
-    } catch (e) {
-      logI('PLACES', 'jsonDecode ERROR: $e');
-      rethrow;
-    }
-
-    if (data is! Map<String, dynamic>) {
-      logI('PLACES', 'Réponse inattendue (pas un Map JSON)');
-      throw Exception('Réponse Places inattendue');
-    }
-
-    final preds = (data['predictions'] as List?) ?? [];
-    final status = data['status'];
-    logI('PLACES', 'status=$status count=${preds.length}');
-
-    return preds;
+    final data = jsonDecode(r.body);
+    logI(
+      'PLACES',
+      'status=${data['status']} '
+      'count=${(data['predictions'] as List?)?.length ?? 0}',
+    );
+    return (data['predictions'] as List?) ?? [];
   }
 
-  static Future<Map<String, dynamic>> placeDetails(String placeId) async {
-    logI('DETAILS', 'place_id=$placeId base=$_currentBase');
 
-    // URL ABSOLUE ici aussi
-    final uri = Uri.parse(
-      'https://chassealerte.onrender.com/api/place-details',
-    ).replace(queryParameters: {'place_id': placeId});
+   static Future<Map<String, dynamic>> placeDetails(String placeId) async {
+    logI('DETAILS', 'place_id=$placeId');
+
+    // ✅ URL correcte vers ton backend Render
+    final uri = Uri.parse('$baseUrl/api/place-details')
+        .replace(queryParameters: {'place_id': placeId});
 
     final headers = await _authHeaders();
-    logI('DETAILS', 'headers.Authorization=${headers['Authorization']}');
 
     logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
-
     logI('HTTP', 'STATUS ${r.statusCode} for $uri');
-    final snippet =
-        r.body.length > 300 ? r.body.substring(0, 300) : r.body;
-    logI('HTTP', 'BODY snippet="$snippet"');
+    logI('HTTP', 'BODY = ${r.body}');
 
     if (r.statusCode != 200) {
       throw Exception('Details HTTP ${r.statusCode}');
     }
 
-    dynamic data;
-    try {
-      data = jsonDecode(r.body);
-      logI('DETAILS', 'jsonDecode ok, type=${data.runtimeType}');
-    } catch (e) {
-      logI('DETAILS', 'jsonDecode ERROR: $e');
-      rethrow;
-    }
-
-    if (data is! Map<String, dynamic>) {
-      throw Exception('Réponse Details inattendue');
-    }
-
-    logI('DETAILS',
-        'status=${data['status']} hasResult=${data['result'] != null}');
+    final data = jsonDecode(r.body);
+    logI(
+      'DETAILS',
+      'status=${data['status']} hasResult=${data['result'] != null}',
+    );
     return data;
   }
+
 
   // ===================================================================
   // STATS BATTUES
