@@ -19,7 +19,7 @@ class BattueMapScreen extends StatefulWidget {
 
 class _BattueMapScreenState extends State<BattueMapScreen> {
   // ====== CONFIG ======
-static const String _apiBase = '${ApiConfig.baseUrl}/api';
+static const String _apiBase = ApiConfig.baseUrl;
   /// Limitation du viewport (France métropolitaine)
   static final LatLngBounds _frBounds = LatLngBounds(
     southwest: const LatLng(41.0, -5.5),
