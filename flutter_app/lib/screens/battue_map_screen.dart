@@ -182,44 +182,51 @@ static const String _apiBase = '${ApiConfig.baseUrl}/api';
 
   // ====== API protégées ======
   Future<List<Map<String, dynamic>>> _searchPlaces(String q) async {
-    if (q.trim().isEmpty) return [];
-    if (!await _ensureAuth()) return [];
-    try {
-      final r = await _dio.get('/api/places', queryParameters: {'input': q});
-      _lastPlacesStatus = (r.data?['status'] ?? '-').toString();
-      final preds = (r.data?['predictions'] as List?) ?? const [];
-      _L('PLACES', 'status=$_lastPlacesStatus, n=${preds.length}');
-      return preds.cast<Map<String, dynamic>>();
-    } catch (e) {
-      _lastPlacesStatus = 'HTTP_ERROR';
-      _L('PLACES', 'err=$e');
-      return [];
-    } finally {
-      setState(() {});
-    }
+  if (q.trim().isEmpty) return [];
+  if (!await _ensureAuth()) return [];
+
+  try {
+    final preds = await ApiServices.placesAutocomplete(q);
+    _lastPlacesStatus = 'OK';
+    _L('PLACES', 'status=$_lastPlacesStatus, n=${preds.length}');
+    return preds.cast<Map<String, dynamic>>();
+  } catch (e) {
+    _lastPlacesStatus = 'HTTP_ERROR';
+    _L('PLACES', 'err=$e');
+    return [];
+  } finally {
+    setState(() {});
   }
+}
+
 
   Future<LatLng?> _getPlaceLatLng(String placeId) async {
-    if (!await _ensureAuth()) return null;
-    try {
-      final r = await _dio.get('/api/place-details', queryParameters: {'place_id': placeId});
-      _lastDetailsStatus = (r.data?['status'] ?? '-').toString();
-      final loc = r.data?['result']?['geometry']?['location'];
-      if (loc is Map && loc['lat'] != null && loc['lng'] != null) {
-        final ll = LatLng((loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
-        _L('DETAILS', 'OK $ll');
-        return ll;
-      }
-      _L('DETAILS', 'no geometry');
-      return null;
-    } catch (e) {
-      _lastDetailsStatus = 'HTTP_ERROR';
-      _L('DETAILS', 'err=$e');
-      return null;
-    } finally {
-      setState(() {});
+  if (!await _ensureAuth()) return null;
+
+  try {
+    final data = await ApiServices.placeDetails(placeId);
+    _lastDetailsStatus = (data['status'] ?? '-').toString();
+
+    final loc = data['result']?['geometry']?['location'];
+    if (loc is Map && loc['lat'] != null && loc['lng'] != null) {
+      final ll = LatLng(
+        (loc['lat'] as num).toDouble(),
+        (loc['lng'] as num).toDouble(),
+      );
+      _L('DETAILS', 'OK $ll');
+      return ll;
     }
+    _L('DETAILS', 'no geometry');
+    return null;
+  } catch (e) {
+    _lastDetailsStatus = 'HTTP_ERROR';
+    _L('DETAILS', 'err=$e');
+    return null;
+  } finally {
+    setState(() {});
   }
+}
+
 
   // ====== ROUTE — helpers ======
   List<LatLng> _decodePolyline(String encoded) {
