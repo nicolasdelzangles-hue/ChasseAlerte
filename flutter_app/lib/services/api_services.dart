@@ -439,15 +439,15 @@ class ApiServices {
     }
   }
 
-    static Future<List<dynamic>> placesAutocomplete(String input) async {
+     static Future<List<dynamic>> placesAutocomplete(String input) async {
     logI('PLACES', 'input="$input"');
 
-    // ✅ ICI : on utilise bien baseUrl complet, pas "ApiConfig.baseUrl"
-    final uri = Uri.parse('$baseUrl/api/places')
-        .replace(queryParameters: {'input': input});
+    // ✅ URL ABSOLUE DIRECTEMENT SUR RENDER (pas de ApiConfig.baseUrl ici)
+    final uri = Uri.parse(
+      'https://chassealerte.onrender.com/api/places',
+    ).replace(queryParameters: {'input': input});
 
-    // route protégée → on envoie le token
-    final headers = await _authHeaders();
+    final headers = await _authHeaders(); // route protégée → Bearer token
 
     logI('HTTP', 'GET $uri');
     final r = await http.get(uri, headers: headers).timeout(_timeout);
@@ -464,16 +464,19 @@ class ApiServices {
       'status=${data['status']} '
       'count=${(data['predictions'] as List?)?.length ?? 0}',
     );
+
     return (data['predictions'] as List?) ?? [];
   }
 
 
-   static Future<Map<String, dynamic>> placeDetails(String placeId) async {
+
+    static Future<Map<String, dynamic>> placeDetails(String placeId) async {
     logI('DETAILS', 'place_id=$placeId');
 
-    // ✅ URL correcte vers ton backend Render
-    final uri = Uri.parse('$baseUrl/api/place-details')
-        .replace(queryParameters: {'place_id': placeId});
+    // ✅ URL ABSOLUE DIRECTEMENT SUR RENDER
+    final uri = Uri.parse(
+      'https://chassealerte.onrender.com/api/place-details',
+    ).replace(queryParameters: {'place_id': placeId});
 
     final headers = await _authHeaders();
 
@@ -493,6 +496,7 @@ class ApiServices {
     );
     return data;
   }
+
 
 
   // ===================================================================
