@@ -135,6 +135,32 @@ Future<Map<String, dynamic>> sendMessage({
   throw Exception('HTTP ${r.statusCode} ${r.body}');
 }
 
+ Future<List<Map<String, dynamic>>> fetchMessages({
+    required int conversationId,
+    int limit = 50,
+  }) async {
+    final uri = _u('/messages/$conversationId?limit=$limit');
+    final headers = await _headers;
+
+    final r = await http
+        .get(
+          uri,
+          headers: headers,
+        )
+        .timeout(_timeout);
+
+    if (r.statusCode == 200) {
+      final data = jsonDecode(r.body);
+      if (data is List) {
+        return data.cast<Map<String, dynamic>>();
+      }
+      return const [];
+    }
+    if (r.statusCode == 401) {
+      throw Exception('Session expirée');
+    }
+    throw Exception('HTTP ${r.statusCode} ${r.body}');
+  }
 
 
   // 🔎 map téléphone -> user (id, etc.)

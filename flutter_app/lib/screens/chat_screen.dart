@@ -180,6 +180,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _socket.onConnect((_) => _joinRoom());
     _bindSocketListeners();
     _socket.connect();
+    _loadHistory();
   }
 
   @override
@@ -234,6 +235,50 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Erreur envoi : $e')),
     );
+  }
+}
+Future<void> _loadHistory() async {
+  try {
+    final raw = await widget.service.fetchMessages(
+      conversationId: widget.conversationId,
+      limit: 50,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _messages.clear();
+      _seen.clear();
+
+      for (final m in raw) {
+        final id = m['id'];
+        final body = (m['body'] ?? '').toString();
+        final created = (m['created_at'] ?? '').toString();
+
+        // Pour l’instant on gère surtout le texte.
+        // (On pourra mapper attachments → image/vidéo plus tard.)
+        final msg = <String, dynamic>{
+          'id': id,
+          'sender_id': m['sender_id'],
+          'conversationId': m['conversation_id'],
+          'text': body,
+          'type': 'text',
+          'createdAt': created,
+        };
+
+        _messages.add(msg);
+        if (id != null) _seen.add(id.toString());
+      }
+    });
+
+    _scrollToEnd();
+  } catch (e) {
+    if (!mounted) return;
+    debugPrint('Erreur loadHistory: $e');
+    // pas obligatoire mais utile:
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   SnackBar(content: Text('Erreur chargement messages : $e')),
+    // );
   }
 }
 
