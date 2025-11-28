@@ -193,43 +193,50 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _send() async {
-    try {
-      final text = _input.text.trim();
-      if (text.isEmpty) return;
+  try {
+    final text = _input.text.trim();
+    if (text.isEmpty) return;
 
-      final clientMsgId = _genClientId();
-      final nowIso = DateTime.now().toIso8601String();
+    final clientMsgId = _genClientId();
+    final nowIso = DateTime.now().toIso8601String();
 
-      // ajout optimiste
-      final temp = {
-        'clientMsgId': clientMsgId,
-        'text': text,
-        'sender_id': widget.currentUserId,
-        'conversationId': widget.conversationId,
-        'createdAt': nowIso,
-        'status': 'sending',
-        'type': 'text',
-      };
+    // ajout optimiste
+    final temp = {
+      'clientMsgId': clientMsgId,
+      'text': text,
+      'sender_id': widget.currentUserId,
+      'conversationId': widget.conversationId,
+      'createdAt': nowIso,
+      'status': 'sending',
+      'type': 'text',
+    };
 
-      setState(() {
-        _messages.add(temp);
-        _seen.add(clientMsgId);
-      });
-      _scrollToEnd();
-      _input.clear();
+    setState(() {
+      _messages.add(temp);
+      _seen.add(clientMsgId);
+    });
+    _scrollToEnd();
+    _input.clear();
 
-      _socket.emit('send_message', {
-        'conversationId': widget.conversationId,
-        'text': text,
-        'clientMsgId': clientMsgId,
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur envoi : $e')),
-      );
-    }
+    // >>> ENVOI RÉEL via API REST
+    await widget.service.sendMessage(
+  conversationId: widget.conversationId,
+  text: text,
+  clientMsgId: clientMsgId,
+);
+
+
+    // La bulle “définitive” arrivera via le socket
+    // dans _socket.on('message_created', ...) avec le même clientMsgId
+    // et remplacera la bulle 'sending'.
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erreur envoi : $e')),
+    );
   }
+}
+
 
   // =======================
   // sélection & upload pièces jointes

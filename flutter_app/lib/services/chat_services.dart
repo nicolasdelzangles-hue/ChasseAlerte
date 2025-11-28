@@ -10,6 +10,7 @@ class ChatService {
   /// (AVEC /api à la fin, comme ApiServices.baseUrl)
   final String baseUrl;
   final String token; 
+  static const Duration _timeout = Duration(seconds: 15);
 
   sio.Socket? _socket;
 
@@ -97,18 +98,44 @@ class ChatService {
     }
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
+Future<Map<String, dynamic>> sendMessage({
+  required int conversationId,
+  required String text,
+  String? clientMsgId,
+}) async {
+  final uri = _u('/messages');
 
-  Future<Map<String, dynamic>> sendMessage(
-    int conversationId,
-    String body,
-  ) async {
-    final r = await http.post(
-      _u('/messages'),
-      headers: _headers,
-      body: jsonEncode({'conversationId': conversationId, 'body': body}),
-    );
-    return (_parse(r) as Map<String, dynamic>);
+  final headers = await _headers;
+
+  final body = <String, dynamic>{
+    'conversationId': conversationId,
+    'body': text,
+  };
+
+  if (clientMsgId != null) {
+    body['clientMsgId'] = clientMsgId;
   }
+
+  final r = await http
+      .post(
+        uri,
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      )
+      .timeout(_timeout);
+
+  if (r.statusCode == 201) {
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  if (r.statusCode == 401) {
+    throw Exception('Session expirée');
+  }
+
+  throw Exception('HTTP ${r.statusCode} ${r.body}');
+}
+
+
 
   // 🔎 map téléphone -> user (id, etc.)
   Future<Map<String, dynamic>?> userByPhone(String e164) async {

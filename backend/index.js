@@ -953,10 +953,12 @@ app.get('/api/messages/:conversationId', authMiddleware, async (req, res) => {
 // Envoi d’un message par REST
 app.post('/api/messages', authMiddleware, async (req, res) => {
   const userId = req.user.id;
-  const { conversationId, body, attachments } = req.body || {};
+  const { conversationId, body, attachments, clientMsgId } = req.body || {};
+
   if (!conversationId || (!body && !attachments)) {
     return res.status(400).json({ message: 'conversationId et body/attachments requis' });
   }
+
   try {
     const [part] = await db.query(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
@@ -973,7 +975,7 @@ app.post('/api/messages', authMiddleware, async (req, res) => {
 
     const io = req.app.get('io');
 
-    // Compat Flutter: event plat
+    // Event compat Flutter : on renvoie AUSSI clientMsgId
     io.to(`conv:${conversationId}`).emit('message_created', {
       id: message.id,
       sender_id: userId,
@@ -981,9 +983,10 @@ app.post('/api/messages', authMiddleware, async (req, res) => {
       text: message.body || '',
       type: message.body ? 'text' : 'file',
       createdAt: new Date(message.created_at || Date.now()).toISOString(),
+      clientMsgId: clientMsgId || null,
     });
 
-    // Event existant
+    // Event “historique”
     io.to(`conv:${conversationId}`).emit('message:new', { conversationId, message });
 
     const [members] = await db.query(
@@ -1000,6 +1003,7 @@ app.post('/api/messages', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur' });
   }
 });
+
 
 // Upload médias de chat (images/vidéos)
 app.post('/api/uploads/chat', authMiddleware, upload.array('files'), async (req, res) => {
