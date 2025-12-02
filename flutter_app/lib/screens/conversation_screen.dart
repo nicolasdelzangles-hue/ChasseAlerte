@@ -145,6 +145,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           token: token,
         ),
         peerDisplayName: displayName,
+        token: token,
       ),
     ),
   );

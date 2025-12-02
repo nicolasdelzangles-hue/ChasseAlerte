@@ -167,38 +167,45 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   void _openConversation(Map<String, dynamic> conv) {
-    final auth = context.read<AuthProvider>();
-    final dynamic rawId = auth.user?.id ?? auth.currentUser?.id;
-    final int? currentUserId = _asInt(rawId);
+  final auth = context.read<AuthProvider>();
 
-    if (currentUserId == null || _service == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Session invalide')));
-      }
-      return;
+  final dynamic rawId = auth.user?.id ?? auth.currentUser?.id;
+  final int? currentUserId = _asInt(rawId);
+
+  final String? token = auth.token; // <<< récup du token
+
+  if (currentUserId == null || _service == null || token == null) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session invalide')),
+      );
     }
-
-    // Calcul du nom pour l’AppBar
-    final convObj = _conversations.firstWhere(
-      (e) => _asInt(e['id']) == _asInt(conv['id']),
-      orElse: () => conv,
-    );
-    final displayName = _computeTitle(Map<String, dynamic>.from(convObj));
-
-    final conversationId = _asInt(conv['id'])!;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          conversationId: conversationId,
-          service: _service!,
-          socketUrl: _socketUrl,
-          currentUserId: currentUserId,
-          peerDisplayName: displayName,
-        ),
-      ),
-    );
+    return;
   }
+
+  // Calcul du nom pour l’AppBar
+  final convObj = _conversations.firstWhere(
+    (e) => _asInt(e['id']) == _asInt(conv['id']),
+    orElse: () => conv,
+  );
+  final displayName = _computeTitle(Map<String, dynamic>.from(convObj));
+
+  final conversationId = _asInt(conv['id'])!;
+
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        conversationId: conversationId,
+        service: _service!,
+        socketUrl: _socketUrl,
+        currentUserId: currentUserId,
+        token: token,                 // <<< ON PASSE LE TOKEN
+        peerDisplayName: displayName,
+      ),
+    ),
+  );
+}
+
 
   Future<void> _toggleFavorite(int convId) async {
     if (!mounted) return;

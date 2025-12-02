@@ -14,7 +14,8 @@ class ChatScreen extends StatefulWidget {
   final int conversationId;
   final String socketUrl;       // ex: 'http://localhost:3000'
   final int currentUserId;      // id de l'utilisateur courant
-  final ChatService service;    // si besoin d'appels REST
+  final ChatService service;   
+   final String token;   // si besoin d'appels REST
   final String? peerDisplayName; // Nom + Prénom du correspondant (affiché en titre)
 
   const ChatScreen({
@@ -23,6 +24,7 @@ class ChatScreen extends StatefulWidget {
     required this.socketUrl,
     required this.currentUserId,
     required this.service,
+    required this.token,
     this.peerDisplayName,
   });
 
@@ -175,22 +177,18 @@ void _bindSocketListeners() {
 void initState() {
   super.initState();
 
-  // 1) base API pour les appels HTTP (upload, REST)
   final base = widget.socketUrl.replaceAll(RegExp(r'/+$'), '');
   _apiBase = '$base/api';
 
   print('[CHAT] initState conv=${widget.conversationId} socketUrl=${widget.socketUrl}');
-  print('[CHAT] _apiBase=$_apiBase');
 
-  // 2) Socket.IO
-  _socket = sio.io(
-    widget.socketUrl,
-    sio.OptionBuilder()
-        .setTransports(['websocket'])          // OK Web + Android + iOS
-        // .setTransports(['websocket', 'polling'])  // version ultra safe si tu veux
-        .disableAutoConnect()
-        .build(),
-  );
+  final opts = sio.OptionBuilder()
+      .setTransports(['websocket'])             // OK pour web + mobile
+      .setAuth({'token': widget.token})         // <--- ICI on envoie le JWT
+      .disableAutoConnect()
+      .build();
+
+  _socket = sio.io(widget.socketUrl, opts);
 
   _socket.onConnect((_) {
     print('[CHAT] SOCKET connected id=${_socket.id}');
@@ -207,10 +205,9 @@ void initState() {
 
   _bindSocketListeners();
   _socket.connect();
-
-  // 3) Chargement de l’historique (REST)
   _loadHistory();
 }
+
 
 
   @override
