@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../services/api_services.dart';
 import 'edit_profile_screen.dart';
 import 'report_inbox_screen.dart';
+import 'admin_participants_screen.dart';
 
 /// Helper pour utiliser des icônes locales
 class LocalIcon extends StatelessWidget {
@@ -216,27 +217,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 8),
 
                     // Bouton admin (sera visible quand role = "admin")
-                    if (isAdmin) ...[
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.mail),
-                        label: const Text('Voir les signalements'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.blueGrey.shade700,
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: () {
-                          print(
-                              '=== [PROFILE] Clic sur "Voir les signalements" ===');
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ReportInboxScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                    // Boutons admin (visibles uniquement si role = "admin")
+if (isAdmin) ...[
+  const SizedBox(height: 16),
+
+  FilledButton.icon(
+    icon: const Icon(Icons.mail),
+    label: const Text('Voir les signalements'),
+    style: FilledButton.styleFrom(
+      backgroundColor: Colors.blueGrey.shade700,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+    ),
+    onPressed: () {
+      print('=== [PROFILE] Clic sur "Voir les signalements" ===');
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const ReportInboxScreen(),
+        ),
+      );
+    },
+  ),
+
+  const SizedBox(height: 8),
+
+  FilledButton.icon(
+    icon: const Icon(Icons.people),
+    label: const Text('Participants aux battues'),
+    style: FilledButton.styleFrom(
+      backgroundColor: Colors.teal.shade700,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+    ),
+    onPressed: () {
+      print('=== [PROFILE] Clic sur "Participants aux battues" ===');
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const AdminBattueParticipantsScreen(),
+        ),
+      );
+    },
+  ),
+],
+
                   ],
                 ),
     );

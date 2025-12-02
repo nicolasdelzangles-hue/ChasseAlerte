@@ -199,6 +199,43 @@ class ApiServices {
       throw Exception('Erreur API reports: ${res.statusCode} ${res.body}');
     }
   }
+  static Future<void> registerParticipation(int battueId) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/api/battues/$battueId/participations');
+
+    final headers = await _authHeaders(); // si tu as déjà une méthode qui ajoute le token
+    final res = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode({}), // pas besoin de body spécial
+    );
+
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception('Erreur serveur (${res.statusCode})');
+    }
+  }
+
+  // si tu n’as pas _authHeaders(), utilise au minimum :
+  // final headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'};
+static Future<List<dynamic>> fetchBattuesWithParticipants() async {
+  final url = Uri.parse('${ApiConfig.baseUrl}/api/admin/battues-participants');
+  final headers = await _authHeaders();
+  final res = await http.get(url, headers: headers);
+  if (res.statusCode != 200) {
+    throw Exception('Erreur ${res.statusCode}');
+  }
+  return jsonDecode(res.body) as List<dynamic>;
+}
+
+static Future<List<dynamic>> fetchParticipantsForBattue(int battueId) async {
+  final url = Uri.parse(
+      '${ApiConfig.baseUrl}/api/admin/battues/$battueId/participants');
+  final headers = await _authHeaders();
+  final res = await http.get(url, headers: headers);
+  if (res.statusCode != 200) {
+    throw Exception('Erreur ${res.statusCode}');
+  }
+  return jsonDecode(res.body) as List<dynamic>;
+}
 
   // ------- PROFIL (moi) -------
   static Future<User> getProfile() async {

@@ -679,6 +679,28 @@ class BattueSearchResultCard extends StatelessWidget {
     );
   }
 
+  Future<void> _onParticiper(BuildContext context) async {
+    try {
+      await ApiServices.registerParticipation(battue.id as int);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Participation enregistrée'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la participation : $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -704,10 +726,26 @@ class BattueSearchResultCard extends StatelessWidget {
             _line('Description', battue.description),
             _line('Type', battue.type),
             _line('Privée', battue.isPrivate == true ? 'Oui' : 'Non'),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton(
+                onPressed: () => _onParticiper(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kAccent,
+                  foregroundColor: Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Participer'),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
 

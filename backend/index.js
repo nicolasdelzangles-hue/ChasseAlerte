@@ -1071,6 +1071,62 @@ app.post('/api/uploads/chat', authMiddleware, upload.array('files'), async (req,
     res.status(500).json({ message: 'Upload échoué' });
   }
 });
+// POST /api/battues/:id/participations  -> user se déclare participant
+app.post('/api/battues/:id/participations', authMiddleware, async (req, res) => {
+  const battueId = parseInt(req.params.id, 10);
+  const userId = req.user.id; // depuis le token
+
+  try {
+    await pool.execute(
+      `INSERT IGNORE INTO battue_participants (battue_id, user_id)
+       VALUES (?, ?)`,
+      [battueId, userId]
+    );
+    return res.status(201).json({ message: 'Participation enregistrée' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// ----- Routes ADMIN seulement -----
+
+// liste des battues avec nb participants
+app.get('/api/admin/battues-participants', adminMiddleware, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT b.id, b.title, b.location, b.date,
+              COUNT(bp.id) AS participantCount
+       FROM battues b
+       LEFT JOIN battue_participants bp ON bp.battue_id = b.id
+       GROUP BY b.id
+       ORDER BY b.date ASC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// détail des participants pour UNE battue
+app.get('/api/admin/battues/:id/participants', adminMiddleware, async (req, res) => {
+  const battueId = parseInt(req.params.id, 10);
+  try {
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.name, u.email, u.phone, bp.created_at
+       FROM battue_participants bp
+       JOIN users u ON u.id = bp.user_id
+       WHERE bp.battue_id = ?
+       ORDER BY bp.created_at ASC`,
+      [battueId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
 
 // ======================= FAVORIS DE CONVERSATIONS =======================
 app.get('/api/conv-favorites', authMiddleware, async (req, res) => {
@@ -1884,27 +1940,41 @@ io.use((socket, next) => {
 
 
 io.on('connection', (socket) => {
+  console.log('🔌 [WS] Nouveau client connecté :', socket.id, 'user =', socket.user && socket.user.id);
+
+  // ⚠ sécurité : vérifier que socket.user existe
+  if (!socket.user || !socket.user.id) {
+    console.warn('⚠ [WS] socket.user absent, on ferme la connexion', socket.id);
+    socket.disconnect();
+    return;
+  }
+
   const userId = socket.user.id;
 
+  // Room perso user:ID
   socket.join(`user:${userId}`);
+  console.log(`👤 [WS] socket ${socket.id} rejoint room user:${userId}`);
 
-  // Rejoindre une conversation (nom standard)
+  // === JOIN CONVERSATION (2 alias) =======================
   socket.on('conversation:join', (conversationId) => {
+    console.log(`➡️ [WS] conversation:join user=${userId} conv=${conversationId} (socket=${socket.id})`);
     socket.join(`conv:${conversationId}`);
   });
 
-  // ✅ Alias pour compatibilité Flutter existante
   socket.on('join_conversation', (conversationId) => {
+    console.log(`➡️ [WS] join_conversation user=${userId} conv=${conversationId} (socket=${socket.id})`);
     socket.join(`conv:${conversationId}`);
   });
 
-  // Indicateur de saisie
+  // === TYPING ============================================
   socket.on('typing', ({ conversationId, isTyping }) => {
+    console.log(`⌨️ [WS] typing from user=${userId} conv=${conversationId} isTyping=${isTyping}`);
     socket.to(`conv:${conversationId}`).emit('typing', { userId, isTyping });
   });
 
-  // Marquage lus
+  // === MESSAGES READ =====================================
   socket.on('messages:read', async ({ conversationId, lastMessageId }) => {
+    console.log(`✅ [WS] messages:read user=${userId} conv=${conversationId} last=${lastMessageId}`);
     try {
       await db.query(
         `UPDATE conversation_participants
@@ -1914,20 +1984,33 @@ io.on('connection', (socket) => {
       );
       io.to(`conv:${conversationId}`).emit('messages:read', { userId, lastMessageId });
     } catch (e) {
-      console.error('socket messages:read', e);
+      console.error('❌ [WS] socket messages:read', e);
     }
   });
 
-  // ✅ Envoi d’un message texte via Socket.IO (compat ChatScreen)
+  // === ENVOI MESSAGE TEXTE VIA SOCKET ====================
   socket.on('send_message', async ({ conversationId, text, clientMsgId }) => {
+    console.log('✉️ [WS] send_message reçu', {
+      userId,
+      conversationId,
+      text,
+      clientMsgId,
+    });
+
     try {
-      if (!conversationId || !String(text || '').trim()) return;
+      if (!conversationId || !String(text || '').trim()) {
+        console.warn('⚠ [WS] send_message ignoré (params invalides)');
+        return;
+      }
 
       const [part] = await db.query(
         'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ? LIMIT 1',
         [conversationId, userId]
       );
-      if (!part.length) return;
+      if (!part.length) {
+        console.warn(`⚠ [WS] user=${userId} n’est pas participant de conv=${conversationId}`);
+        return;
+      }
 
       const [ins] = await db.query(
         'INSERT INTO messages (conversation_id, sender_id, body, attachments) VALUES (?, ?, ?, ?)',
@@ -1938,7 +2021,7 @@ io.on('connection', (socket) => {
 
       const createdAtIso = new Date(message.created_at || Date.now()).toISOString();
 
-      io.to(`conv:${conversationId}`).emit('message_created', {
+      const payloadPlat = {
         id: message.id,
         sender_id: userId,
         conversationId: Number(conversationId),
@@ -1946,22 +2029,32 @@ io.on('connection', (socket) => {
         type: 'text',
         createdAt: createdAtIso,
         clientMsgId: clientMsgId || null,
-      });
+      };
 
+      console.log('📤 [WS] EMIT message_created -> conv:' + conversationId, payloadPlat);
+      io.to(`conv:${conversationId}`).emit('message_created', payloadPlat);
+
+      console.log('📤 [WS] EMIT message:new -> conv:' + conversationId);
       io.to(`conv:${conversationId}`).emit('message:new', { conversationId: Number(conversationId), message });
 
       const [members] = await db.query(
         'SELECT user_id FROM conversation_participants WHERE conversation_id = ?',
         [conversationId]
       );
-      members.forEach(({ user_id }) =>
-        io.to(`user:${user_id}`).emit('message:new', { conversationId: Number(conversationId), message })
-      );
+      members.forEach(({ user_id }) => {
+        console.log('📤 [WS] EMIT message:new -> user:' + user_id);
+        io.to(`user:${user_id}`).emit('message:new', { conversationId: Number(conversationId), message });
+      });
     } catch (e) {
-      console.error('socket send_message', e);
+      console.error('❌ [WS] socket send_message', e);
     }
   });
+
+  socket.on('disconnect', () => {
+    console.log('🔌 [WS] Client déconnecté :', socket.id, 'user=', userId);
+  });
 });
+
 
 app.set('io', io);
 
