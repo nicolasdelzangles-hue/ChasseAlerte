@@ -977,14 +977,15 @@ app.post('/api/messages', authMiddleware, async (req, res) => {
 
     // Event compat Flutter : on renvoie AUSSI clientMsgId
     io.to(`conv:${conversationId}`).emit('message_created', {
-      id: message.id,
-      sender_id: userId,
-      conversationId: Number(conversationId),
-      text: message.body || '',
-      type: message.body ? 'text' : 'file',
-      createdAt: new Date(message.created_at || Date.now()).toISOString(),
-      clientMsgId: clientMsgId || null,
-    });
+  id: message.id,
+  sender_id: userId,
+  conversationId: Number(conversationId),
+  text: message.body || '',
+  type: message.body ? 'text' : 'file',
+  clientMsgId: clientMsgId || null,   // <<< AJOUT
+  createdAt: new Date(message.created_at || Date.now()).toISOString(),
+});
+
 
     // Event “historique”
     io.to(`conv:${conversationId}`).emit('message:new', { conversationId, message });

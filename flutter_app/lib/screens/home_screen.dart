@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   final Set<int> _favoris = {};
-
+ 
   int? _asInt(dynamic v) {
     if (v == null) return null;
     if (v is int) return v;
@@ -47,9 +47,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    
     Future.microtask(() => context.read<BattueProvider>().fetchBattues());
     context.read<AuthProvider>().resetInactivityTimer();
   }
+ 
+   
+
 
   /// Construit les 6 onglets (inclut Stats)
   List<Widget> _buildTabs(BuildContext context) {
@@ -237,11 +241,25 @@ class _HomeContentState extends State<HomeContent> {
   WeatherBundle? _meteo;
   bool _loadingMeteo = false;
   String? _meteoErr;
+final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadMeteoFromMyPosition();
+
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim().toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadMeteoFromMyPosition() async {
@@ -261,10 +279,28 @@ class _HomeContentState extends State<HomeContent> {
       setState(() => _loadingMeteo = false);
     }
   }
+    List<dynamic> _filterBattues(List<dynamic> all) {
+    if (_searchQuery.isEmpty) return all;
+
+    bool contains(String? value) =>
+        value != null && value.toLowerCase().contains(_searchQuery);
+
+    return all.where((b) {
+      // on filtre sur plusieurs champs
+      return contains(b.title) ||
+             contains(b.location) ||   // zone / commune
+             contains(b.description) ||
+             contains(b.type);
+    }).toList();
+  }
+
 
   @override
+    @override
   Widget build(BuildContext context) {
     final battueProvider = context.watch<BattueProvider>();
+    final allBattues = battueProvider.battues;
+    final filteredBattues = _filterBattues(allBattues);
 
     Widget tuileMeteo() {
       if (_loadingMeteo) {
@@ -300,76 +336,132 @@ class _HomeContentState extends State<HomeContent> {
       return const SizedBox.shrink();
     }
 
+    // ----- construction dynamique de la page -----
+    final List<Widget> children = [
+      TextField(
+        controller: _searchController,
+        style: const TextStyle(color: kBeige),
+        decoration: InputDecoration(
+          hintText: 'Rechercher une battue...',
+          hintStyle: const TextStyle(color: kBeige70),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Image.asset(
+              'assets/image/recherche_icone.png',
+              width: 22,
+              height: 22,
+              color: kBeige,
+            ),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(26),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: const Color(0xFF1B4A3B),
+        ),
+      ),
+      const SizedBox(height: 20),
+
+      tuileMeteo(),
+      const SizedBox(height: 20),
+    ];
+
+    // --- Si on tape quelque chose : on affiche les résultats ---
+    if (_searchQuery.isNotEmpty) {
+      children.addAll([
+        const Text(
+          'Résultats de recherche',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: kBeige,
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        if (filteredBattues.isEmpty)
+          const Text(
+            'Aucune battue trouvée.',
+            style: TextStyle(color: kBeige70),
+          )
+        else
+          Column(
+            children: filteredBattues
+                .map<Widget>((b) => BattueSearchResultCard(battue: b))
+                .toList(),
+          ),
+
+        const SizedBox(height: 20),
+      ]);
+    } else {
+      // --- Sinon : ton écran habituel (favoris + battues dispo) ---
+      children.addAll([
+        const Text(
+          'Favoris',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: kBeige,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (widget.favoris.isEmpty)
+          const Text('Aucun favori.', style: TextStyle(color: kBeige70))
+        else
+          Column(
+            children: allBattues
+                .where((b) => widget.favoris.contains(b.id))
+                .map((b) => BattueCard(
+                      battue: b,
+                      isFavori: true,
+                      onToggleFavori: widget.onToggleFavori,
+                      onOpenBattues: widget.onOpenBattuesTab,
+                    ))
+                .toList(),
+          ),
+        const SizedBox(height: 30),
+
+        const Text(
+          'Battues disponibles',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: kBeige,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (battueProvider.isLoading)
+          const Center(child: CircularProgressIndicator(color: kBeige))
+        else if (allBattues.isEmpty)
+          const Text(
+            'Aucune battue disponible.',
+            style: TextStyle(color: kBeige70),
+          )
+        else
+          Column(
+            children: allBattues
+                .map((b) => BattueCard(
+                      battue: b,
+                      isFavori: widget.favoris.contains(b.id),
+                      onToggleFavori: widget.onToggleFavori,
+                      onOpenBattues: widget.onOpenBattuesTab,
+                    ))
+                .toList(),
+          ),
+        const SizedBox(height: 12),
+      ]);
+    }
+
     return Container(
       color: Colors.transparent,
       child: ListView(
         padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            style: const TextStyle(color: kBeige),
-            decoration: InputDecoration(
-              hintText: 'Rechercher une battue...',
-              hintStyle: const TextStyle(color: kBeige70),
-              prefixIcon: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Image.asset('assets/image/recherche_icone.png',
-                    width: 22, height: 22, color: kBeige),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(26),
-                borderSide: BorderSide.none,
-              ),
-              filled: true,
-              fillColor: const Color(0xFF1B4A3B),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          tuileMeteo(),
-          const SizedBox(height: 20),
-
-          const Text('Favoris',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kBeige)),
-          const SizedBox(height: 10),
-          if (widget.favoris.isEmpty)
-            const Text('Aucun favori.', style: TextStyle(color: kBeige70))
-          else
-            Column(
-              children: battueProvider.battues
-                  .where((b) => widget.favoris.contains(b.id))
-                  .map((b) => BattueCard(
-                        battue: b,
-                        isFavori: true,
-                        onToggleFavori: widget.onToggleFavori,
-                        onOpenBattues: widget.onOpenBattuesTab,
-                      ))
-                  .toList(),
-            ),
-
-          const SizedBox(height: 30),
-          const Text('Battues disponibles',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kBeige)),
-          const SizedBox(height: 10),
-          if (battueProvider.isLoading)
-            const Center(child: CircularProgressIndicator(color: kBeige))
-          else if (battueProvider.battues.isEmpty)
-            const Text('Aucune battue disponible.', style: TextStyle(color: kBeige70))
-          else
-            Column(
-              children: battueProvider.battues
-                  .map((b) => BattueCard(
-                        battue: b,
-                        isFavori: widget.favoris.contains(b.id),
-                        onToggleFavori: widget.onToggleFavori,
-                        onOpenBattues: widget.onOpenBattuesTab,
-                      ))
-                  .toList(),
-            ),
-          const SizedBox(height: 12),
-        ],
+        children: children,
       ),
     );
   }
+
 }
 
 /* ---------------------- Carte Battue ---------------------- */
@@ -561,3 +653,61 @@ class BattueCard extends StatelessWidget {
     );
   }
 }
+class BattueSearchResultCard extends StatelessWidget {
+  final dynamic battue;
+
+  const BattueSearchResultCard({super.key, required this.battue});
+
+  Widget _line(String label, dynamic value) {
+    if (value == null) return const SizedBox.shrink();
+    if (value is String && value.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(color: kBeige),
+          children: [
+            TextSpan(
+              text: '$label : ',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            TextSpan(text: '$value'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: kCard,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              battue.title ?? '',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: kBeige,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _line('Lieu (zone/commune)', battue.location),
+            _line('Date', battue.date),
+            _line('Description', battue.description),
+            _line('Type', battue.type),
+            _line('Privée', battue.isPrivate == true ? 'Oui' : 'Non'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

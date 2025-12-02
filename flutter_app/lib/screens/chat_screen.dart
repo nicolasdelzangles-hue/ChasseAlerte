@@ -120,47 +120,81 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _bindSocketListeners() {
-    _socket.off('message_created');
-    _socket.off('message');
+  _socket.off('message_created');
+  _socket.off('message:new');
 
-    // Event “plat” utilisé par ton écran (texte + médias)
-    _socket.on('message_created', (data) {
-      if (!mounted) return;
-      final Map<String, dynamic> msg = Map<String, dynamic>.from(data);
+  // 1) Event "compat" envoyé par le backend
+  _socket.on('message_created', (data) {
+    if (!mounted) return;
+    final Map<String, dynamic> msg = Map<String, dynamic>.from(data);
 
-      final String? key =
-          (msg['id']?.toString()) ??
-          (msg['clientMsgId']?.toString()) ??
-          (msg['url']?.toString());
-      if (key != null && _seen.contains(key)) return;
+    // clé pour dédupliquer
+    final String? key =
+        (msg['id']?.toString()) ??
+        (msg['clientMsgId']?.toString()) ??
+        (msg['url']?.toString());
 
-      final String? clientMsgId = msg['clientMsgId']?.toString();
-      final int idx = clientMsgId == null
-          ? -1
-          : _messages.indexWhere(
-              (m) => (m['clientMsgId']?.toString() == clientMsgId),
-            );
+    if (key != null && _seen.contains(key)) return;
+
+    final String? clientMsgId = msg['clientMsgId']?.toString();
+    final int idx = clientMsgId == null
+        ? -1
+        : _messages.indexWhere(
+            (m) => (m['clientMsgId']?.toString() == clientMsgId),
+          );
+
+    setState(() {
+      if (key != null) _seen.add(key);
+      if (idx >= 0) {
+        // remplace la bulle "sending"
+        _messages[idx] = msg;
+      } else {
+        _messages.add(msg);
+      }
+    });
+    _scrollToEnd();
+  });
+
+  // 2) Event "officiel" du serveur : message:new { conversationId, message }
+  _socket.on('message:new', (data) {
+    if (!mounted) return;
+    try {
+      final root = Map<String, dynamic>.from(data as Map);
+      final msg = Map<String, dynamic>.from(root['message'] ?? {});
+
+      if (msg.isEmpty) return;
+
+      final convId = msg['conversation_id'];
+      if (convId.toString() != widget.conversationId.toString()) {
+        // pas notre conversation, on ignore
+        return;
+      }
+
+      final idStr = msg['id']?.toString();
+      if (idStr != null && _seen.contains(idStr)) return;
+
+      final mapped = <String, dynamic>{
+        'id': msg['id'],
+        'sender_id': msg['sender_id'],
+        'conversationId': msg['conversation_id'],
+        'text': (msg['body'] ?? '').toString(),
+        'type': 'text', // si tu veux gérer attachments → à adapter
+        'createdAt': (msg['created_at'] ?? '').toString(),
+      };
 
       setState(() {
-        if (key != null) _seen.add(key);
-        if (idx >= 0) {
-          _messages[idx] = msg;
-        } else {
-          _messages.add(msg);
-        }
+        if (idStr != null) _seen.add(idStr);
+        _messages.add(mapped);
       });
       _scrollToEnd();
-    });
+    } catch (e) {
+      // juste pour debug
+      // ignore: avoid_print
+      print('socket message:new parse error: $e  data=$data');
+    }
+  });
+}
 
-    // Event complémentaire (si le serveur émet “message”)
-    _socket.on('message', (data) {
-      if (!mounted) return;
-      setState(() {
-        _messages.add(Map<String, dynamic>.from(data));
-      });
-      _scrollToEnd();
-    });
-  }
 
   void _joinRoom() => _socket.emit('join_conversation', widget.conversationId);
 
