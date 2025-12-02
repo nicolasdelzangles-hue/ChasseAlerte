@@ -171,25 +171,27 @@ void _bindSocketListeners() {
 
 
   void _joinRoom() => _socket.emit('join_conversation', widget.conversationId);
+@override
+void initState() {
+  super.initState();
 
-  @override
-  void initState() {
-    super.initState();
-
-    // ====== base API dérivée du socketUrl ======
+  // 1) base API pour les appels HTTP (upload, REST)
   final base = widget.socketUrl.replaceAll(RegExp(r'/+$'), '');
   _apiBase = '$base/api';
 
-  print('[CHAT] initState conv=${widget.conversationId} socketUrl=$_apiBase');
+  print('[CHAT] initState conv=${widget.conversationId} socketUrl=${widget.socketUrl}');
+  print('[CHAT] _apiBase=$_apiBase');
 
+  // 2) Socket.IO
   _socket = sio.io(
     widget.socketUrl,
     sio.OptionBuilder()
-        .setTransports(['websocket'])
-        // .setExtraHeaders({'Authorization': 'Bearer TON_TOKEN'}) // si tu as un middleware
+        .setTransports(['websocket'])          // OK Web + Android + iOS
+        // .setTransports(['websocket', 'polling'])  // version ultra safe si tu veux
         .disableAutoConnect()
         .build(),
   );
+
   _socket.onConnect((_) {
     print('[CHAT] SOCKET connected id=${_socket.id}');
     _joinRoom();
@@ -203,11 +205,13 @@ void _bindSocketListeners() {
     print('[CHAT] SOCKET disconnected: $reason');
   });
 
-    _socket.onConnect((_) => _joinRoom());
-    _bindSocketListeners();
-    _socket.connect();
-    _loadHistory();
-  }
+  _bindSocketListeners();
+  _socket.connect();
+
+  // 3) Chargement de l’historique (REST)
+  _loadHistory();
+}
+
 
   @override
   void dispose() {

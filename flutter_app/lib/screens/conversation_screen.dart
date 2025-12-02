@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import '../providers/auth_provider.dart';
 import '../models/user.dart';
 import '../services/api_services.dart';
 import '../services/chat_services.dart';
+import '../screens/chat_screen.dart';
+import 'package:provider/provider.dart';
 
 // Utilisé pour le ChatService (même base que l'API)
 const String kApiBaseUrl = ApiConfig.baseUrl;
@@ -122,12 +124,33 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       onTap: () {
-                        // TODO: Naviguer vers l'écran de chat avec l'ID
-                        // final id = conv['id'];
-                        // Navigator.push(context, MaterialPageRoute(
-                        //   builder: (_) => ChatScreen(conversationId: id),
-                        // ));
-                      },
+  final auth = context.read<AuthProvider>();
+  final user = auth.currentUser;
+  final token = auth.token;          // <-- adapte le nom si besoin
+
+  if (user == null || token == null) return;
+
+  final displayName = otherName;     // ou ton calcul existant
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        conversationId: conv['id'] as int,
+        socketUrl: ApiServices.socketUrl,        // pour Socket.IO
+        currentUserId: user.id!,  // <- on enlève le ? en disant "je sais qu'il n’est pas null"
+
+        service: ChatService(
+          baseUrl: ApiServices.baseUrl,         // pour l’API REST
+          token: token,
+        ),
+        peerDisplayName: displayName,
+      ),
+    ),
+  );
+},
+
+
                     );
                   },
                 ),
