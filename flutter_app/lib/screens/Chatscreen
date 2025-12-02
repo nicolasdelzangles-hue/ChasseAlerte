@@ -14,6 +14,36 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    
+  // ====== base API dérivée du socketUrl ======
+  final base = widget.socketUrl.replaceAll(RegExp(r'/+$'), '');
+  _apiBase = '$base/api';
+
+  print('[CHAT] initState conv=${widget.conversationId} socketUrl=$_apiBase');
+
+  _socket = sio.io(
+    widget.socketUrl,
+    sio.OptionBuilder()
+        .setTransports(['websocket'])
+        // .setExtraHeaders({'Authorization': 'Bearer TON_TOKEN'}) // si tu as un middleware
+        .disableAutoConnect()
+        .build(),
+  );
+
+  _socket.onConnect((_) {
+    print('[CHAT] SOCKET connected id=${_socket.id}');
+    _joinRoom();
+  });
+
+  _socket.onConnectError((err) {
+    print('[CHAT] SOCKET connect error: $err');
+  });
+
+  _socket.onDisconnect((reason) {
+    print('[CHAT] SOCKET disconnected: $reason');
+  });
+  _bindSocketListeners();
+  _socket.connect();
     fetchMessages();
   }
   // Exemple simplifié — ajoute ça à ton backend
